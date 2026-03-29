@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; script-src 'self';">
+	<title>GateControl</title>
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+	<link rel="stylesheet" href="styles/app.css">
+</head>
+<body>
+	<!-- ── Titlebar (frameless) ──────────────────────────── -->
+	<header class="titlebar" id="titlebar">
+		<div class="titlebar-drag">
+			<svg class="titlebar-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+				<circle cx="12" cy="12" r="3"/>
+				<path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"/>
+			</svg>
+			<span class="titlebar-text">GateControl</span>
+		</div>
+		<div class="titlebar-controls">
+			<button class="tb-btn" id="btn-minimize" title="Minimieren">
+				<svg viewBox="0 0 10 10"><path d="M1 5h8" stroke="currentColor" stroke-width="1.2"/></svg>
+			</button>
+			<button class="tb-btn tb-close" id="btn-close" title="In Tray minimieren">
+				<svg viewBox="0 0 10 10"><path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" stroke-width="1.2"/></svg>
+			</button>
+		</div>
+	</header>
+
+	<!-- ── App Container ─────────────────────────────────── -->
+	<main class="app">
+		<!-- ── Navigation ─────────────────────────────────── -->
+		<nav class="nav" id="nav">
+			<button class="nav-btn active" data-page="status">
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+				<span>Status</span>
+			</button>
+			<button class="nav-btn" data-page="settings">
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+				<span>Einstellungen</span>
+			</button>
+			<button class="nav-btn" data-page="logs">
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+				<span>Logs</span>
+			</button>
+		</nav>
+
+		<!-- ── Pages ──────────────────────────────────────── -->
+		<div class="pages">
+
+			<!-- STATUS PAGE -->
+			<section class="page active" id="page-status">
+				<!-- Connection Ring -->
+				<div class="status-hero">
+					<div class="ring-container" id="ring-container">
+						<svg class="ring" viewBox="0 0 200 200">
+							<circle class="ring-track" cx="100" cy="100" r="88" fill="none" stroke-width="4"/>
+							<circle class="ring-fill" id="ring-fill" cx="100" cy="100" r="88" fill="none" stroke-width="4" 
+								stroke-dasharray="553" stroke-dashoffset="553"/>
+						</svg>
+						<div class="ring-inner">
+							<div class="status-icon" id="status-icon">
+								<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+									<path d="M18.36 6.64A9 9 0 015.64 18.36M5.64 5.64A9 9 0 0118.36 18.36"/>
+								</svg>
+							</div>
+							<div class="status-label" id="status-label">Getrennt</div>
+						</div>
+					</div>
+				</div>
+
+				<!-- Connect Button -->
+				<button class="connect-btn" id="connect-btn">
+					<span class="connect-btn-text">Verbinden</span>
+					<div class="connect-btn-loader" hidden>
+						<div class="spinner"></div>
+					</div>
+				</button>
+
+				<!-- Stats Grid -->
+				<div class="stats-grid" id="stats-grid">
+					<div class="stat-card">
+						<div class="stat-label">Endpoint</div>
+						<div class="stat-value mono" id="stat-endpoint">—</div>
+					</div>
+					<div class="stat-card">
+						<div class="stat-label">Handshake</div>
+						<div class="stat-value mono" id="stat-handshake">—</div>
+					</div>
+					<div class="stat-card">
+						<div class="stat-label">↓ Empfangen</div>
+						<div class="stat-value mono" id="stat-rx">0 B</div>
+					</div>
+					<div class="stat-card">
+						<div class="stat-label">↑ Gesendet</div>
+						<div class="stat-value mono" id="stat-tx">0 B</div>
+					</div>
+				</div>
+
+				<!-- Kill-Switch Toggle -->
+				<div class="toggle-row" id="killswitch-row">
+					<div class="toggle-info">
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="toggle-icon"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+						<div>
+							<div class="toggle-label">Kill-Switch</div>
+							<div class="toggle-desc">Blockiert Traffic ohne VPN</div>
+						</div>
+					</div>
+					<label class="switch">
+						<input type="checkbox" id="killswitch-toggle">
+						<span class="slider"></span>
+					</label>
+				</div>
+			</section>
+
+			<!-- SETTINGS PAGE -->
+			<section class="page" id="page-settings">
+				<h2 class="page-title">Einstellungen</h2>
+
+				<!-- Server -->
+				<div class="settings-group">
+					<h3 class="group-title">GateControl Server</h3>
+					<div class="field">
+						<label class="field-label" for="server-url">Server-URL</label>
+						<input class="field-input" id="server-url" type="url" placeholder="https://gate.example.com">
+					</div>
+					<div class="field">
+						<label class="field-label" for="api-key">API-Key</label>
+						<div class="field-row">
+							<input class="field-input mono" id="api-key" type="password" placeholder="gc_xxxxxxxxxxxxxxxx">
+							<button class="field-btn" id="toggle-api-key" title="Anzeigen">
+								<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+							</button>
+						</div>
+					</div>
+					<div class="field-actions">
+						<button class="btn btn-secondary" id="btn-test-server">Verbindung testen</button>
+						<button class="btn btn-primary" id="btn-save-server">Speichern & Registrieren</button>
+					</div>
+					<div class="field-status" id="server-status" hidden></div>
+				</div>
+
+				<!-- Config Import -->
+				<div class="settings-group">
+					<h3 class="group-title">Konfiguration importieren</h3>
+					<div class="import-actions">
+						<button class="btn btn-outline" id="btn-import-file">
+							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+							.conf Datei importieren
+						</button>
+						<button class="btn btn-outline" id="btn-import-qr">
+							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="3" height="3"/><rect x="18" y="18" width="3" height="3"/></svg>
+							QR-Code scannen
+						</button>
+					</div>
+					<!-- QR Scanner Preview -->
+					<div class="qr-preview" id="qr-preview" hidden>
+						<video id="qr-video" autoplay playsinline></video>
+						<canvas id="qr-canvas" hidden></canvas>
+						<button class="btn btn-secondary" id="btn-qr-cancel">Abbrechen</button>
+					</div>
+				</div>
+
+				<!-- App Settings -->
+				<div class="settings-group">
+					<h3 class="group-title">Anwendung</h3>
+					<div class="toggle-row compact">
+						<span class="toggle-label">Mit Windows starten</span>
+						<label class="switch"><input type="checkbox" id="opt-autostart" checked><span class="slider"></span></label>
+					</div>
+					<div class="toggle-row compact">
+						<span class="toggle-label">Minimiert starten</span>
+						<label class="switch"><input type="checkbox" id="opt-minimized" checked><span class="slider"></span></label>
+					</div>
+					<div class="toggle-row compact">
+						<span class="toggle-label">Auto-Connect</span>
+						<label class="switch"><input type="checkbox" id="opt-autoconnect" checked><span class="slider"></span></label>
+					</div>
+					<div class="field">
+						<label class="field-label" for="opt-check-interval">Verbindungsprüfung (Sekunden)</label>
+						<input class="field-input" id="opt-check-interval" type="number" value="30" min="5" max="300">
+					</div>
+					<div class="field">
+						<label class="field-label" for="opt-poll-interval">Config-Aktualisierung (Sekunden)</label>
+						<input class="field-input" id="opt-poll-interval" type="number" value="300" min="30" max="3600">
+					</div>
+				</div>
+			</section>
+
+			<!-- LOGS PAGE -->
+			<section class="page" id="page-logs">
+				<div class="page-header">
+					<h2 class="page-title">Logs</h2>
+					<button class="btn btn-secondary" id="btn-refresh-logs">Aktualisieren</button>
+				</div>
+				<pre class="log-output" id="log-output">Lade Logs...</pre>
+			</section>
+
+		</div>
+	</main>
+
+	<script src="renderer.js"></script>
+</body>
+</html>

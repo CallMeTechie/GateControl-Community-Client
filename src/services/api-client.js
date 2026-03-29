@@ -1,0 +1,188 @@
+/**
+ * GateControl – API Client
+ * 
+ * Kommuniziert mit dem GateControl-Server:
+ * - Config abrufen & aktualisieren
+ * - Peer registrieren
+ * - Heartbeat senden
+ * - Status melden
+ */
+
+const axios = require('axios');
+const os = require('os');
+
+class ApiClient {
+	constructor(serverUrl, apiKey, log, peerId = null) {
+		this.log = log;
+		this.serverUrl = serverUrl;
+		this.apiKey = apiKey;
+		this.peerId = peerId;
+		this.configHash = null;
+		this.client = null;
+
+		if (serverUrl) {
+			this._createClient();
+		}
+	}
+
+	/**
+	 * Konfiguration aktualisieren
+	 */
+	configure(url, apiKey, peerId = null) {
+		this.serverUrl = url;
+		this.apiKey = apiKey;
+		if (peerId) this.peerId = peerId;
+		this._createClient();
+	}
+
+	/**
+	 * Peer-ID setzen (nach Registrierung)
+	 */
+	setPeerId(peerId) {
+		this.peerId = peerId;
+	}
+	
+	/**
+	 * Axios-Client erstellen
+	 */
+	_createClient() {
+		this.client = axios.create({
+			baseURL: this.serverUrl.replace(/\/+$/, ''),
+			timeout: 15000,
+			headers: {
+				'Content-Type': 'application/json',
+				'X-API-Token': this.apiKey,
+				'X-Client-Version': '1.0.0',
+				'X-Client-Platform': 'windows',
+			},
+		});
+		
+		// Response Interceptor für Logging
+		this.client.interceptors.response.use(
+			(res) => res,
+			(err) => {
+				if (err.response) {
+					this.log.warn(`API ${err.response.status}: ${err.config?.url}`);
+				} else {
+					this.log.warn(`API Error: ${err.message}`);
+				}
+				throw err;
+			}
+		);
+	}
+	
+	/**
+	 * Server-Erreichbarkeit prüfen
+	 */
+	async ping() {
+		if (!this.client) throw new Error('Server nicht konfiguriert');
+		const { data } = await this.client.get('/api/v1/client/ping');
+		return data;
+	}
+
+	/**
+	 * Client beim Server registrieren
+	 * Gibt Peer-ID und initiale Config zurück
+	 */
+	async register() {
+		if (!this.client) throw new Error('Server nicht konfiguriert');
+
+		const hostname = os.hostname();
+		const platform = `${os.platform()} ${os.release()}`;
+
+		const { data } = await this.client.post('/api/v1/client/register', {
+			hostname,
+			platform,
+			clientVersion: '1.0.0',
+		});
+
+		this.peerId = data.peerId;
+		this.configHash = data.hash || null;
+		this.log.info(`Registriert als Peer: ${data.peerId}`);
+		return data;
+	}
+
+	/**
+	 * WireGuard-Config vom Server abrufen
+	 */
+	async fetchConfig() {
+		if (!this.client) throw new Error('Server nicht konfiguriert');
+		if (!this.peerId) throw new Error('Nicht registriert (keine Peer-ID)');
+
+		const { data } = await this.client.get('/api/v1/client/config', {
+			params: { peerId: this.peerId },
+		});
+
+		if (data.config) {
+			this.configHash = data.hash || null;
+			return data.config;
+		}
+
+		return null;
+	}
+
+	/**
+	 * Prüft ob eine neue Config verfügbar ist
+	 * Gibt die Config nur zurück wenn sich der Hash geändert hat
+	 */
+	async checkConfigUpdate() {
+		if (!this.client || !this.peerId) return null;
+
+		try {
+			const params = { peerId: this.peerId };
+			if (this.configHash) params.hash = this.configHash;
+			const { data } = await this.client.get('/api/v1/client/config/check', { params });
+
+			if (data.updated && data.config) {
+				this.configHash = data.hash;
+				this.log.info('Neue Konfiguration verfügbar');
+				return data.config;
+			}
+
+			return null;
+		} catch (err) {
+			if (err.response?.status === 304) return null;
+			throw err;
+		}
+	}
+
+	/**
+	 * Heartbeat an Server senden
+	 */
+	async sendHeartbeat(stats) {
+		if (!this.client || !this.peerId) return;
+
+		try {
+			await this.client.post('/api/v1/client/heartbeat', {
+				peerId: this.peerId,
+				connected: stats?.connected || false,
+				rxBytes: stats?.rxBytes || 0,
+				txBytes: stats?.txBytes || 0,
+				uptime: stats?.uptime || 0,
+				hostname: os.hostname(),
+			});
+		} catch (err) {
+			this.log.debug('Heartbeat fehlgeschlagen:', err.message);
+		}
+	}
+
+	/**
+	 * Status-Update an Server melden
+	 */
+	async reportStatus(status, details = {}) {
+		if (!this.client || !this.peerId) return;
+
+		try {
+			await this.client.post('/api/v1/client/status', {
+				peerId: this.peerId,
+				status,
+				...details,
+				timestamp: new Date().toISOString(),
+			});
+		} catch (err) {
+			this.log.debug('Status-Report fehlgeschlagen:', err.message);
+		}
+	}
+}
+
+module.exports = ApiClient;

@@ -1,0 +1,348 @@
+/**
+ * GateControl Client – Renderer
+ * UI-Logik und State Management
+ */
+
+const { tunnel, server, config, killSwitch, autostart, logs, window: win } = window.gatecontrol;
+
+// ── DOM-Elemente ─────────────────────────────────────────
+const $ = (sel) => document.querySelector(sel);
+const $$ = (sel) => document.querySelectorAll(sel);
+
+const el = {
+	// Status
+	ringFill:     $('#ring-fill'),
+	ringContainer: $('#ring-container'),
+	statusIcon:   $('#status-icon'),
+	statusLabel:  $('#status-label'),
+	connectBtn:   $('#connect-btn'),
+	statEndpoint: $('#stat-endpoint'),
+	statHandshake: $('#stat-handshake'),
+	statRx:       $('#stat-rx'),
+	statTx:       $('#stat-tx'),
+	killswitchToggle: $('#killswitch-toggle'),
+	
+	// Settings
+	serverUrl:    $('#server-url'),
+	apiKey:       $('#api-key'),
+	serverStatus: $('#server-status'),
+	optAutostart: $('#opt-autostart'),
+	optMinimized: $('#opt-minimized'),
+	optAutoconnect: $('#opt-autoconnect'),
+	optCheckInterval: $('#opt-check-interval'),
+	optPollInterval:  $('#opt-poll-interval'),
+	
+	// Logs
+	logOutput:    $('#log-output'),
+};
+
+// ── State ────────────────────────────────────────────────
+let state = {
+	status: 'disconnected',
+	connected: false,
+};
+
+// ── Navigation ───────────────────────────────────────────
+$$('.nav-btn').forEach(btn => {
+	btn.addEventListener('click', () => {
+		const page = btn.dataset.page;
+		navigateTo(page);
+	});
+});
+
+function navigateTo(page) {
+	$$('.nav-btn').forEach(b => b.classList.remove('active'));
+	$(`.nav-btn[data-page="${page}"]`)?.classList.add('active');
+	
+	$$('.page').forEach(p => p.classList.remove('active'));
+	$(`#page-${page}`)?.classList.add('active');
+	
+	// Logs laden wenn Tab gewechselt
+	if (page === 'logs') refreshLogs();
+}
+
+// Navigation aus dem Main Process
+window.gatecontrol.onNavigate((page) => navigateTo(page));
+
+// ── Titlebar ─────────────────────────────────────────────
+$('#btn-minimize').addEventListener('click', () => win.minimize());
+$('#btn-close').addEventListener('click', () => win.close());
+
+// ── Tunnel State Updates ─────────────────────────────────
+tunnel.onState((newState) => {
+	state = { ...state, ...newState };
+	updateUI();
+});
+
+// Initial Status laden
+tunnel.getStatus().then(s => {
+	if (s) {
+		state = { ...state, ...s };
+		updateUI();
+	}
+});
+
+// ── UI Update ────────────────────────────────────────────
+function updateUI() {
+	const { status, connected, endpoint, handshake, rxBytes, txBytes, killSwitch: ks } = state;
+	
+	// Ring
+	el.ringFill.classList.remove('connected', 'connecting');
+	el.statusIcon.classList.remove('connected', 'connecting');
+	
+	if (connected || status === 'connected') {
+		el.ringFill.classList.add('connected');
+		el.statusIcon.classList.add('connected');
+		el.statusIcon.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`;
+		el.statusLabel.textContent = 'Verbunden';
+		el.statusLabel.style.color = 'var(--accent)';
+		
+		el.connectBtn.classList.add('connected');
+		el.connectBtn.classList.remove('connecting');
+		el.connectBtn.querySelector('.connect-btn-text').textContent = 'Trennen';
+		
+	} else if (status === 'connecting' || status === 'reconnecting') {
+		el.ringFill.classList.add('connecting');
+		el.statusIcon.classList.add('connecting');
+		el.statusIcon.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>`;
+		el.statusLabel.textContent = status === 'reconnecting' ? 'Reconnecting...' : 'Verbinde...';
+		el.statusLabel.style.color = 'var(--warn)';
+		
+		el.connectBtn.classList.remove('connected');
+		el.connectBtn.classList.add('connecting');
+		
+	} else {
+		el.statusIcon.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64A9 9 0 015.64 18.36M5.64 5.64A9 9 0 0118.36 18.36"/></svg>`;
+		el.statusLabel.textContent = 'Getrennt';
+		el.statusLabel.style.color = 'var(--text-3)';
+		
+		el.connectBtn.classList.remove('connected', 'connecting');
+		el.connectBtn.querySelector('.connect-btn-text').textContent = 'Verbinden';
+	}
+	
+	// Stats
+	el.statEndpoint.textContent = endpoint || '—';
+	el.statHandshake.textContent = handshake || '—';
+	el.statRx.textContent = formatBytes(rxBytes || 0);
+	el.statTx.textContent = formatBytes(txBytes || 0);
+	
+	// Kill-Switch
+	el.killswitchToggle.checked = ks || false;
+}
+
+// ── Connect Button ───────────────────────────────────────
+el.connectBtn.addEventListener('click', async () => {
+	if (state.status === 'connecting') return;
+	
+	if (state.connected) {
+		await tunnel.disconnect();
+	} else {
+		await tunnel.connect();
+	}
+});
+
+// ── Kill-Switch Toggle ───────────────────────────────────
+el.killswitchToggle.addEventListener('change', (e) => {
+	killSwitch.toggle(e.target.checked);
+});
+
+// ── Settings: Server ─────────────────────────────────────
+// Laden
+config.getAll().then(cfg => {
+	if (!cfg) return;
+	el.serverUrl.value = cfg.server?.url || '';
+	el.apiKey.value = cfg.server?.apiKey || '';
+	el.optAutostart.checked = cfg.app?.startWithWindows ?? true;
+	el.optMinimized.checked = cfg.app?.startMinimized ?? true;
+	el.optAutoconnect.checked = cfg.tunnel?.autoConnect ?? true;
+	el.optCheckInterval.value = cfg.app?.checkInterval ?? 30;
+	el.optPollInterval.value = cfg.app?.configPollInterval ?? 300;
+});
+
+// API-Key anzeigen/verbergen
+$('#toggle-api-key').addEventListener('click', () => {
+	const input = el.apiKey;
+	input.type = input.type === 'password' ? 'text' : 'password';
+});
+
+// Server testen
+$('#btn-test-server').addEventListener('click', async () => {
+	showServerStatus('Teste Verbindung...', 'info');
+	
+	// Temporär URL setzen
+	const url = el.serverUrl.value.trim();
+	const key = el.apiKey.value.trim();
+	
+	if (!url || !key) {
+		showServerStatus('URL und API-Key erforderlich', 'error');
+		return;
+	}
+	
+	const result = await server.test();
+	if (result.success) {
+		showServerStatus('Verbindung erfolgreich!', 'success');
+	} else {
+		showServerStatus(`Fehler: ${result.error}`, 'error');
+	}
+});
+
+// Server speichern
+$('#btn-save-server').addEventListener('click', async () => {
+	const url = el.serverUrl.value.trim();
+	const key = el.apiKey.value.trim();
+	
+	if (!url || !key) {
+		showServerStatus('URL und API-Key erforderlich', 'error');
+		return;
+	}
+	
+	showServerStatus('Registriere Client...', 'info');
+	
+	const result = await server.setup({ url, apiKey: key });
+	if (result.success) {
+		showServerStatus(`Registriert! Peer-ID: ${result.peerId}`, 'success');
+	} else {
+		showServerStatus(`Fehler: ${result.error}`, 'error');
+	}
+});
+
+function showServerStatus(message, type) {
+	el.serverStatus.hidden = false;
+	el.serverStatus.textContent = message;
+	el.serverStatus.className = `field-status ${type}`;
+	
+	if (type === 'success') {
+		setTimeout(() => { el.serverStatus.hidden = true; }, 5000);
+	}
+}
+
+// ── Settings: Config Import ──────────────────────────────
+$('#btn-import-file').addEventListener('click', async () => {
+	const result = await config.importFile();
+	if (result.success) {
+		showServerStatus(`Config importiert: ${result.path}`, 'success');
+	} else if (result.error) {
+		showServerStatus(`Import-Fehler: ${result.error}`, 'error');
+	}
+});
+
+// QR-Code Scanner
+let qrStream = null;
+
+$('#btn-import-qr').addEventListener('click', async () => {
+	const preview = $('#qr-preview');
+	const video = $('#qr-video');
+	
+	try {
+		qrStream = await navigator.mediaDevices.getUserMedia({
+			video: { facingMode: 'environment' }
+		});
+		
+		video.srcObject = qrStream;
+		preview.hidden = false;
+		
+		// QR-Code scannen
+		scanQR();
+	} catch (err) {
+		showServerStatus(`Kamera-Fehler: ${err.message}`, 'error');
+	}
+});
+
+$('#btn-qr-cancel').addEventListener('click', stopQRScan);
+
+function stopQRScan() {
+	if (qrStream) {
+		qrStream.getTracks().forEach(t => t.stop());
+		qrStream = null;
+	}
+	$('#qr-preview').hidden = true;
+}
+
+async function scanQR() {
+	const video = $('#qr-video');
+	const canvas = $('#qr-canvas');
+	const ctx = canvas.getContext('2d');
+	
+	const scan = async () => {
+		if (!qrStream) return;
+		
+		if (video.readyState === video.HAVE_ENOUGH_DATA) {
+			canvas.width = video.videoWidth;
+			canvas.height = video.videoHeight;
+			ctx.drawImage(video, 0, 0);
+			
+			const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+			const result = await config.importQR({
+				data: Array.from(imageData.data),
+				width: canvas.width,
+				height: canvas.height,
+			});
+			
+			if (result.success) {
+				stopQRScan();
+				showServerStatus('QR-Code erkannt! Config importiert.', 'success');
+				return;
+			}
+		}
+		
+		requestAnimationFrame(scan);
+	};
+	
+	scan();
+}
+
+// ── Settings: App Options ────────────────────────────────
+el.optAutostart.addEventListener('change', (e) => {
+	autostart.set(e.target.checked);
+	config.set('app.startWithWindows', e.target.checked);
+});
+
+el.optMinimized.addEventListener('change', (e) => {
+	config.set('app.startMinimized', e.target.checked);
+});
+
+el.optAutoconnect.addEventListener('change', (e) => {
+	config.set('tunnel.autoConnect', e.target.checked);
+});
+
+el.optCheckInterval.addEventListener('change', (e) => {
+	const val = Math.max(5, Math.min(300, parseInt(e.target.value, 10) || 30));
+	e.target.value = val;
+	config.set('app.checkInterval', val);
+});
+
+el.optPollInterval.addEventListener('change', (e) => {
+	const val = Math.max(30, Math.min(3600, parseInt(e.target.value, 10) || 300));
+	e.target.value = val;
+	config.set('app.configPollInterval', val);
+});
+
+// ── Logs ─────────────────────────────────────────────────
+async function refreshLogs() {
+	el.logOutput.textContent = 'Lade Logs...';
+	const logText = await logs.get();
+	el.logOutput.textContent = logText || 'Keine Logs verfügbar';
+	el.logOutput.scrollTop = el.logOutput.scrollHeight;
+}
+
+$('#btn-refresh-logs').addEventListener('click', refreshLogs);
+
+// ── Helpers ──────────────────────────────────────────────
+function formatBytes(bytes) {
+	if (bytes === 0) return '0 B';
+	const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+	const i = Math.floor(Math.log(bytes) / Math.log(1024));
+	const val = (bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0);
+	return `${val} ${units[i]}`;
+}
+
+// ── Stats Refresh Timer ──────────────────────────────────
+setInterval(async () => {
+	if (state.connected) {
+		const status = await tunnel.getStatus();
+		if (status) {
+			state = { ...state, ...status };
+			updateUI();
+		}
+	}
+}, 5000);
