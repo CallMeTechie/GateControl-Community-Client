@@ -9,6 +9,7 @@
 const koffi = require('koffi');
 const path = require('path');
 const fs = require('fs').promises;
+const dns = require('dns').promises;
 const { exec } = require('child_process');
 const { promisify } = require('util');
 
@@ -37,18 +38,18 @@ const SOCKADDR_IN_SIZE = 16;
 // ── SOCKADDR_INET union size (covers both IPv4 and IPv6) ────
 const SOCKADDR_INET_SIZE = 28;
 
-// ── Struct sizes (packed, no alignment padding) ─────────────
-// WireGuardInterface: Flags(4) + ListenPort(2) + PrivateKey(32) + PublicKey(32) + PeersCount(4) = 74
-const WG_INTERFACE_SIZE = 74;
+// ── Struct sizes (ALIGNED(8), natural alignment with padding) ─
+// WireGuardInterface: Flags(4) + ListenPort(2) + PrivateKey(32) + PublicKey(32)
+//   + pad(2) + PeersCount(4) + pad(4) = 80
+const WG_INTERFACE_SIZE = 80;
 
 // WireGuardPeer: Flags(4) + Reserved(4) + PublicKey(32) + PresharedKey(32)
-//   + PersistentKeepalive(2) + Endpoint(28) + RxBytes(8) + TxBytes(8)
-//   + LastHandshake(8) + AllowedIPsCount(4) = 130
-const WG_PEER_SIZE = 130;
+//   + PersistentKeepalive(2) + pad(2) + Endpoint(28) + TxBytes(8) + RxBytes(8)
+//   + LastHandshake(8) + AllowedIPsCount(4) + pad(4) = 136
+const WG_PEER_SIZE = 136;
 
-// WireGuardAllowedIP: Address(16 for union) + AddressFamily(2) + Cidr(1) + padding = 20
-// Actually: IN_ADDR/IN6_ADDR union(16) + AddressFamily(2) + Cidr(1) + pad(1) = 20
-const WG_ALLOWED_IP_SIZE = 20;
+// WireGuardAllowedIP: Address(16) + AddressFamily(2) + Cidr(1) + pad(1) + Flags(4) = 24
+const WG_ALLOWED_IP_SIZE = 24;
 
 class WireGuardNative {
   constructor(log) {
@@ -172,9 +173,10 @@ class WireGuardNative {
   }
 
   /**
-   * Endpoint-String (host:port) → SOCKADDR_IN Buffer (16 Bytes)
+   * Endpoint-String (host:port) → SOCKADDR_IN Buffer (28 Bytes)
+   * Resolves hostnames to IPv4 addresses if needed
    */
-  _encodeEndpoint(endpointStr) {
+  async _encodeEndpoint(endpointStr) {
     const buf = Buffer.alloc(SOCKADDR_INET_SIZE, 0);
 
     if (!endpointStr || endpointStr === '(none)') return buf;
@@ -182,19 +184,29 @@ class WireGuardNative {
     const match = endpointStr.match(/^(.+):(\d+)$/);
     if (!match) return buf;
 
-    const [, host, portStr] = match;
+    let [, host, portStr] = match;
     const port = parseInt(portStr, 10);
+
+    // Resolve hostname to IP if not already an IPv4 address
+    if (!/^\d+\.\d+\.\d+\.\d+$/.test(host)) {
+      try {
+        const { address } = await dns.lookup(host, { family: 4 });
+        this.log.info(`Endpoint aufgelöst: ${host} → ${address}`);
+        host = address;
+      } catch (err) {
+        this.log.error(`DNS-Auflösung fehlgeschlagen für ${host}: ${err.message}`);
+        return buf;
+      }
+    }
 
     // AF_INET = 2
     buf.writeUInt16LE(2, 0); // sin_family
     buf.writeUInt16BE(port, 2); // sin_port (network byte order)
 
-    // IPv4-Adresse parsen
+    // IPv4-Adresse schreiben
     const parts = host.split('.');
-    if (parts.length === 4) {
-      for (let i = 0; i < 4; i++) {
-        buf.writeUInt8(parseInt(parts[i], 10), 4 + i);
-      }
+    for (let i = 0; i < 4; i++) {
+      buf.writeUInt8(parseInt(parts[i], 10), 4 + i);
     }
 
     return buf;
@@ -208,23 +220,30 @@ class WireGuardNative {
     const buffers = [];
 
     for (const ipCidr of ips) {
+      // 24 bytes: Address(16) + AddressFamily(2) + Cidr(1) + pad(1) + Flags(4)
       const buf = Buffer.alloc(WG_ALLOWED_IP_SIZE, 0);
       const [addr, cidrStr] = ipCidr.split('/');
       const cidr = parseInt(cidrStr || '32', 10);
 
       if (addr.includes(':')) {
         // IPv6: AF_INET6 = 23
+        // Write 128-bit IPv6 address at offset 0
+        const groups = this._expandIPv6(addr);
+        for (let i = 0; i < 8; i++) {
+          buf.writeUInt16BE(groups[i], i * 2);
+        }
         buf.writeUInt16LE(23, 16); // AddressFamily
         buf.writeUInt8(cidr, 18); // Cidr
       } else {
-        // IPv4
+        // IPv4: AF_INET = 2
         const parts = addr.split('.');
         for (let i = 0; i < 4; i++) {
           buf.writeUInt8(parseInt(parts[i], 10), i);
         }
-        buf.writeUInt16LE(2, 16); // AddressFamily = AF_INET
+        buf.writeUInt16LE(2, 16); // AddressFamily
         buf.writeUInt8(cidr, 18); // Cidr
       }
+      // Flags at offset 20 — 0 = default (no WIREGUARD_ALLOWED_IP_REMOVE)
 
       buffers.push(buf);
     }
@@ -233,17 +252,34 @@ class WireGuardNative {
   }
 
   /**
+   * Expand IPv6 address (handle :: shorthand) → array of 8 uint16 groups
+   */
+  _expandIPv6(addr) {
+    const groups = new Array(8).fill(0);
+    if (addr === '::') return groups;
+
+    const sides = addr.split('::');
+    const left = sides[0] ? sides[0].split(':').map(g => parseInt(g, 16)) : [];
+    const right = sides.length > 1 && sides[1] ? sides[1].split(':').map(g => parseInt(g, 16)) : [];
+
+    for (let i = 0; i < left.length; i++) groups[i] = left[i];
+    for (let i = 0; i < right.length; i++) groups[8 - right.length + i] = right[i];
+
+    return groups;
+  }
+
+  /**
    * Parsed config → Binärer Buffer für WireGuardSetConfiguration
    *
    * Layout: [WireGuardInterface][WireGuardPeer][AllowedIP...][WireGuardPeer][AllowedIP...]...
    */
-  _buildConfigBuffer(parsed) {
+  async _buildConfigBuffer(parsed) {
     const peerBuffers = [];
 
     for (const peer of parsed.peers) {
       const allowedIPs = this._encodeAllowedIPs(peer.AllowedIPs || '0.0.0.0/0');
 
-      // Peer Header
+      // Peer Header (136 bytes, ALIGNED(8))
       const peerBuf = Buffer.alloc(WG_PEER_SIZE, 0);
       let flags = WIREGUARD_PEER_HAS_PUBLIC_KEY | WIREGUARD_PEER_REPLACE_ALLOWED_IPS;
       let offset = 0;
@@ -274,17 +310,20 @@ class WireGuardNative {
       offset += 32;
       // PersistentKeepalive (2 bytes)
       peerBuf.writeUInt16LE(keepalive, offset); offset += 2;
+      // Padding (2 bytes) — alignment for SOCKADDR_INET
+      offset += 2;
       // Endpoint (SOCKADDR_INET, 28 bytes)
-      this._encodeEndpoint(peer.Endpoint).copy(peerBuf, offset); offset += SOCKADDR_INET_SIZE;
-      // RxBytes (8), TxBytes (8), LastHandshake (8) — all zero for set
+      (await this._encodeEndpoint(peer.Endpoint)).copy(peerBuf, offset); offset += SOCKADDR_INET_SIZE;
+      // TxBytes (8), RxBytes (8), LastHandshake (8) — all zero for set
       offset += 24;
       // AllowedIPsCount (4 bytes)
-      peerBuf.writeUInt32LE(allowedIPs.length, offset);
+      peerBuf.writeUInt32LE(allowedIPs.length, offset); offset += 4;
+      // Padding (4 bytes) — align struct to 8 bytes
 
       peerBuffers.push({ header: peerBuf, allowedIPs });
     }
 
-    // Interface Header
+    // Interface Header (80 bytes, ALIGNED(8))
     const ifaceBuf = Buffer.alloc(WG_INTERFACE_SIZE, 0);
     let ifaceFlags = WIREGUARD_INTERFACE_HAS_PRIVATE_KEY | WIREGUARD_INTERFACE_REPLACE_PEERS;
     let offset = 0;
@@ -297,8 +336,11 @@ class WireGuardNative {
     this._decodeKey(parsed.privateKey).copy(ifaceBuf, offset); offset += 32;
     // PublicKey (32 bytes) — derived automatically, leave zero
     offset += 32;
+    // Padding (2 bytes) — alignment for PeersCount DWORD
+    offset += 2;
     // PeersCount (4 bytes)
-    ifaceBuf.writeUInt32LE(parsed.peers.length, offset);
+    ifaceBuf.writeUInt32LE(parsed.peers.length, offset); offset += 4;
+    // Padding (4 bytes) — align struct to 8 bytes
 
     // Gesamtbuffer zusammenbauen
     const parts = [ifaceBuf];
@@ -372,7 +414,7 @@ class WireGuardNative {
     this.log.info('Adapter erstellt, setze Konfiguration...');
 
     // Konfiguration setzen
-    const configBuffer = this._buildConfigBuffer(parsed);
+    const configBuffer = await this._buildConfigBuffer(parsed);
     const success = this._setConfiguration(this.adapter, configBuffer, configBuffer.length);
     if (!success) {
       this._closeAdapter(this.adapter);
@@ -593,20 +635,23 @@ class WireGuardNative {
 
     let offset = 0;
 
-    // Interface Header
+    // Interface Header (80 bytes, ALIGNED(8))
     offset += 4; // Flags
     offset += 2; // ListenPort
     offset += 32; // PrivateKey
     const publicKey = buf.subarray(offset, offset + 32);
     offset += 32; // PublicKey
+    offset += 2; // Padding
     const peersCount = buf.readUInt32LE(offset);
-    offset += 4;
+    offset += 4; // PeersCount
+    offset += 4; // Padding to ALIGNED(8)
 
     const peers = [];
 
     for (let i = 0; i < peersCount; i++) {
       if (offset + WG_PEER_SIZE > buf.length) break;
 
+      // Peer Header (136 bytes, ALIGNED(8))
       offset += 4; // Flags
       offset += 4; // Reserved
 
@@ -621,18 +666,20 @@ class WireGuardNative {
 
       // PersistentKeepalive
       offset += 2;
+      // Padding (2 bytes)
+      offset += 2;
 
       // Endpoint (SOCKADDR_INET)
       const endpointBuf = buf.subarray(offset, offset + SOCKADDR_INET_SIZE);
       const endpoint = this._decodeEndpoint(endpointBuf);
       offset += SOCKADDR_INET_SIZE;
 
-      // RxBytes (uint64)
-      const rxBytes = Number(buf.readBigUInt64LE(offset));
+      // TxBytes (uint64) — comes before RxBytes in wireguard-nt
+      const txBytes = Number(buf.readBigUInt64LE(offset));
       offset += 8;
 
-      // TxBytes (uint64)
-      const txBytes = Number(buf.readBigUInt64LE(offset));
+      // RxBytes (uint64)
+      const rxBytes = Number(buf.readBigUInt64LE(offset));
       offset += 8;
 
       // LastHandshake (uint64, Windows FILETIME)
@@ -643,8 +690,10 @@ class WireGuardNative {
       // AllowedIPsCount
       const allowedIPsCount = buf.readUInt32LE(offset);
       offset += 4;
+      // Padding to ALIGNED(8)
+      offset += 4;
 
-      // AllowedIPs überspringen
+      // AllowedIPs überspringen (24 bytes each)
       offset += allowedIPsCount * WG_ALLOWED_IP_SIZE;
 
       peers.push({
