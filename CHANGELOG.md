@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.2] — 2026-03-30
+
+### Fixes
+- window width 590px, add spacing between traffic usage and kill-switch
+
+---
+
 ## [1.7.1] — 2026-03-30
 
 ### Fixes
