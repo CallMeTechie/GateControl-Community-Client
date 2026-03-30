@@ -815,7 +815,7 @@ body {
 }
 
 .service-item:hover {
-	background: var(--bg-4, #2a2d3a);
+	background: var(--bg-hover);
 }
 
 .service-name {
