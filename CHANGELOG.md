@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.0] — 2026-03-30
+
+### Features
+- dark/light theme toggle with persistent setting
+
+---
+
 ## [1.6.1] — 2026-03-30
 
 ### Dokumentation
