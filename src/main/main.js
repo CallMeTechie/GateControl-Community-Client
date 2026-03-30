@@ -729,7 +729,21 @@ app.whenReady().then(async () => {
 	
 	// Services initialisieren
 	await initServices();
-	
+
+	// Kill-Switch Cleanup: verwaiste Regeln vom letzten Crash bereinigen
+	try {
+		const wasActive = await killSwitch.isActive();
+		if (wasActive && !store.get('tunnel.killSwitch', false)) {
+			log.warn('Verwaiste Kill-Switch Regeln gefunden — bereinige...');
+			await killSwitch.disable();
+		} else if (wasActive) {
+			log.info('Kill-Switch war beim letzten Beenden aktiv — Regeln bleiben bestehen');
+			killSwitch.enabled = true;
+		}
+	} catch (err) {
+		log.debug('Kill-Switch Cleanup:', err.message);
+	}
+
 	// IPC Handler registrieren
 	registerIpcHandlers();
 	
@@ -810,11 +824,23 @@ app.on('window-all-closed', (e) => {
 
 async function quitApp() {
 	app.isQuitting = true;
-	
+
+	// Updater stoppen
+	updater?.stop();
+
+	// Tunnel trennen
 	if (tunnelState.connected) {
 		await disconnectTunnel();
 	}
-	
+
+	// Kill-Switch deaktivieren wenn aktiv
+	if (killSwitch?.enabled) {
+		try {
+			await killSwitch.disable();
+			store.set('tunnel.killSwitch', false);
+		} catch {}
+	}
+
 	tray?.destroy();
 	app.quit();
 }

@@ -1,20 +1,51 @@
 /**
  * GateControl – Kill-Switch Service
- * 
+ *
  * Blockiert allen Netzwerkverkehr außer:
  * - WireGuard-Tunnel-Traffic
  * - DNS über VPN
  * - Lokales Netzwerk
  * - GateControl Server-Kommunikation
- * 
+ *
  * Implementiert über Windows Firewall (netsh advfirewall)
  */
 
-const { exec } = require('child_process');
+const { execFile } = require('child_process');
 const { promisify } = require('util');
 const fs = require('fs').promises;
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
+
+// Input validation
+const IPV4_RE = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/;
+const CIDR_RE = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\/\d{1,2}$/;
+const PORT_RE = /^\d{1,5}$/;
+const RULE_NAME_RE = /^[a-zA-Z0-9_]+$/;
+
+function validateIp(val) {
+	if (!IPV4_RE.test(val)) throw new Error(`Ungültige IP: ${val}`);
+	return val;
+}
+
+function validateCidr(val) {
+	if (!CIDR_RE.test(val)) throw new Error(`Ungültige CIDR: ${val}`);
+	return val;
+}
+
+function validatePort(val) {
+	if (!PORT_RE.test(String(val))) throw new Error(`Ungültiger Port: ${val}`);
+	return String(val);
+}
+
+function validateRuleName(val) {
+	if (!RULE_NAME_RE.test(val)) throw new Error(`Ungültiger Regelname: ${val}`);
+	return val;
+}
+
+// Safe netsh execution via execFile (no shell interpolation)
+function netsh(...args) {
+	return execFileAsync('netsh', args);
+}
 
 class KillSwitch {
 	constructor(log) {
@@ -22,24 +53,21 @@ class KillSwitch {
 		this.rulePrefix = 'GateControl_KS';
 		this.enabled = false;
 	}
-	
+
 	/**
 	 * Kill-Switch aktivieren
-	 * Erstellt Firewall-Regeln die allen Traffic blockieren
-	 * außer WireGuard-Tunnel und lokale Kommunikation
 	 */
 	async enable(configPath) {
 		if (this.enabled) {
 			this.log.debug('Kill-Switch bereits aktiv');
 			return;
 		}
-		
+
 		this.log.info('Aktiviere Kill-Switch...');
-		
-		// Config parsen um Endpoint und AllowedIPs zu extrahieren
+
 		let endpoint = null;
 		let vpnSubnet = null;
-		
+
 		try {
 			const config = await fs.readFile(configPath, 'utf-8');
 			const parsed = this._parseConfig(config);
@@ -48,19 +76,18 @@ class KillSwitch {
 		} catch (err) {
 			this.log.warn('Config konnte nicht geparst werden:', err.message);
 		}
-		
+
 		try {
-			// Bestehende Regeln entfernen
 			await this._removeAllRules();
-			
-			// 1. ALLOW: Loopback (localhost)
+
+			// 1. ALLOW: Loopback
 			await this._addRule({
 				name: `${this.rulePrefix}_Allow_Loopback`,
 				dir: 'out',
 				action: 'allow',
 				remoteip: '127.0.0.0/8',
 			});
-			
+
 			// 2. ALLOW: Lokales Netzwerk
 			for (const subnet of ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16']) {
 				await this._addRule({
@@ -70,20 +97,19 @@ class KillSwitch {
 					remoteip: subnet,
 				});
 			}
-			
-			// 3. ALLOW: WireGuard Endpoint (VPN-Server)
+
+			// 3. ALLOW: WireGuard Endpoint
 			if (endpoint) {
-				const { host, port } = endpoint;
 				await this._addRule({
 					name: `${this.rulePrefix}_Allow_WG_Endpoint`,
 					dir: 'out',
 					action: 'allow',
-					remoteip: host,
-					remoteport: port,
+					remoteip: endpoint.host,
+					remoteport: endpoint.port,
 					protocol: 'udp',
 				});
 			}
-			
+
 			// 4. ALLOW: VPN-Subnetz
 			if (vpnSubnet) {
 				await this._addRule({
@@ -93,7 +119,7 @@ class KillSwitch {
 					remoteip: vpnSubnet,
 				});
 			}
-			
+
 			// 5. ALLOW: DHCP
 			await this._addRule({
 				name: `${this.rulePrefix}_Allow_DHCP`,
@@ -103,34 +129,33 @@ class KillSwitch {
 				localport: '68',
 				remoteport: '67',
 			});
-			
-			// 6. BLOCK: Alles andere (Outbound)
+
+			// 6. BLOCK: Outbound
 			await this._addRule({
 				name: `${this.rulePrefix}_Block_All_Out`,
 				dir: 'out',
 				action: 'block',
 				remoteip: 'any',
 			});
-			
-			// 7. BLOCK: Alles andere (Inbound)
+
+			// 7. BLOCK: Inbound
 			await this._addRule({
 				name: `${this.rulePrefix}_Block_All_In`,
 				dir: 'in',
 				action: 'block',
 				remoteip: 'any',
 			});
-			
+
 			this.enabled = true;
 			this.log.info('Kill-Switch aktiviert');
-			
+
 		} catch (err) {
 			this.log.error('Kill-Switch Aktivierung fehlgeschlagen:', err);
-			// Aufräumen bei Fehler
 			await this._removeAllRules();
 			throw err;
 		}
 	}
-	
+
 	/**
 	 * Kill-Switch deaktivieren
 	 */
@@ -140,131 +165,110 @@ class KillSwitch {
 		this.enabled = false;
 		this.log.info('Kill-Switch deaktiviert');
 	}
-	
+
 	/**
 	 * Prüft ob Kill-Switch aktiv ist
 	 */
 	async isActive() {
 		try {
-			const { stdout } = await execAsync(
-				`netsh advfirewall firewall show rule name="${this.rulePrefix}_Block_All_Out"`
-			);
+			const { stdout } = await netsh('advfirewall', 'firewall', 'show', 'rule',
+				`name=${this.rulePrefix}_Block_All_Out`);
 			return stdout.includes(this.rulePrefix);
 		} catch {
 			return false;
 		}
 	}
-	
+
 	/**
-	 * Firewall-Regel hinzufügen
+	 * Firewall-Regel hinzufügen (alle Werte validiert)
 	 */
 	async _addRule({ name, dir, action, protocol, remoteip, remoteport, localport }) {
-		let cmd = `netsh advfirewall firewall add rule name="${name}" dir=${dir} action=${action}`;
-		
-		if (protocol)   cmd += ` protocol=${protocol}`;
-		else            cmd += ' protocol=any';
-		if (remoteip)   cmd += ` remoteip=${remoteip}`;
-		if (remoteport) cmd += ` remoteport=${remoteport}`;
-		if (localport)  cmd += ` localport=${localport}`;
-		
-		cmd += ' enable=yes';
-		
-		this.log.debug(`Firewall-Regel: ${cmd}`);
-		await execAsync(cmd);
+		const args = ['advfirewall', 'firewall', 'add', 'rule',
+			`name=${name}`,
+			`dir=${dir}`,
+			`action=${action}`,
+			`protocol=${protocol || 'any'}`,
+		];
+
+		if (remoteip) {
+			// Validiere: nur IPs, CIDRs oder 'any'
+			if (remoteip !== 'any') {
+				if (remoteip.includes('/')) validateCidr(remoteip);
+				else validateIp(remoteip);
+			}
+			args.push(`remoteip=${remoteip}`);
+		}
+		if (remoteport) {
+			args.push(`remoteport=${validatePort(remoteport)}`);
+		}
+		if (localport) {
+			args.push(`localport=${validatePort(localport)}`);
+		}
+
+		args.push('enable=yes');
+
+		this.log.debug(`Firewall-Regel: netsh ${args.join(' ')}`);
+		await netsh(...args);
 	}
-	
+
 	/**
 	 * Alle GateControl Kill-Switch Regeln entfernen
 	 */
 	async _removeAllRules() {
-		try {
-			// Alle Regeln mit Prefix finden und entfernen
-			const { stdout } = await execAsync(
-				'netsh advfirewall firewall show rule name=all'
-			);
-			
-			const rules = stdout.split('\n')
-				.filter(line => line.includes(this.rulePrefix))
-				.map(line => {
-					const match = line.match(/Regelname:\s*(.+)/);
-					return match ? match[1].trim() : null;
-				})
-				.filter(Boolean);
-			
-			for (const rule of rules) {
-				await execAsync(`netsh advfirewall firewall delete rule name="${rule}"`).catch(() => {});
-			}
-			
-			// Sicherheitshalber auch direkt per Prefix löschen
-			await execAsync(
-				`netsh advfirewall firewall delete rule name="${this.rulePrefix}_Block_All_Out"`
-			).catch(() => {});
-			
-			await execAsync(
-				`netsh advfirewall firewall delete rule name="${this.rulePrefix}_Block_All_In"`
-			).catch(() => {});
-			
-			await execAsync(
-				`netsh advfirewall firewall delete rule name="${this.rulePrefix}_Allow_Loopback"`
-			).catch(() => {});
-			
-			await execAsync(
-				`netsh advfirewall firewall delete rule name="${this.rulePrefix}_Allow_WG_Endpoint"`
-			).catch(() => {});
-			
-			await execAsync(
-				`netsh advfirewall firewall delete rule name="${this.rulePrefix}_Allow_VPN_Subnet"`
-			).catch(() => {});
-			
-			await execAsync(
-				`netsh advfirewall firewall delete rule name="${this.rulePrefix}_Allow_DHCP"`
-			).catch(() => {});
-			
-			// LAN-Regeln
-			for (const subnet of ['10_0_0_0_8', '172_16_0_0_12', '192_168_0_0_16']) {
-				await execAsync(
-					`netsh advfirewall firewall delete rule name="${this.rulePrefix}_Allow_LAN_${subnet}"`
-				).catch(() => {});
-			}
-			
-		} catch (err) {
-			this.log.debug('Regel-Cleanup:', err.message);
+		const ruleNames = [
+			`${this.rulePrefix}_Block_All_Out`,
+			`${this.rulePrefix}_Block_All_In`,
+			`${this.rulePrefix}_Allow_Loopback`,
+			`${this.rulePrefix}_Allow_WG_Endpoint`,
+			`${this.rulePrefix}_Allow_VPN_Subnet`,
+			`${this.rulePrefix}_Allow_DHCP`,
+			`${this.rulePrefix}_Allow_LAN_10_0_0_0_8`,
+			`${this.rulePrefix}_Allow_LAN_172_16_0_0_12`,
+			`${this.rulePrefix}_Allow_LAN_192_168_0_0_16`,
+		];
+
+		for (const name of ruleNames) {
+			try {
+				await netsh('advfirewall', 'firewall', 'delete', 'rule', `name=${name}`);
+			} catch { /* Regel existiert nicht */ }
 		}
 	}
-	
+
 	/**
-	 * Config parsen für Endpoint-Extraktion
+	 * Config parsen für Endpoint-Extraktion (mit Validierung)
 	 */
 	_parseConfig(content) {
 		let endpoint = null;
 		let vpnSubnet = null;
-		
+
 		for (const line of content.split('\n')) {
 			const trimmed = line.trim();
-			
+
 			const epMatch = trimmed.match(/^Endpoint\s*=\s*(.+):(\d+)$/);
 			if (epMatch) {
-				endpoint = { host: epMatch[1], port: epMatch[2] };
+				const host = epMatch[1].trim();
+				const port = epMatch[2].trim();
+				// Nur gültige IPs als Endpoint akzeptieren
+				if (IPV4_RE.test(host) && PORT_RE.test(port)) {
+					endpoint = { host, port };
+				}
 			}
-			
+
 			const addrMatch = trimmed.match(/^Address\s*=\s*(.+)$/);
 			if (addrMatch) {
-				// z.B. 10.8.0.2/24 → 10.8.0.0/24
 				const cidr = addrMatch[1].trim().split(',')[0].trim();
 				const parts = cidr.split('/');
-				if (parts.length === 2) {
+				if (parts.length === 2 && IPV4_RE.test(parts[0])) {
 					const ip = parts[0].split('.');
 					const mask = parseInt(parts[1], 10);
-					if (mask <= 24) {
-						ip[3] = '0';
+					if (mask >= 0 && mask <= 32) {
+						if (mask <= 24) ip[3] = '0';
 						vpnSubnet = `${ip.join('.')}/${mask}`;
-					} else {
-						vpnSubnet = cidr;
 					}
 				}
 			}
 		}
-		
+
 		return { endpoint, vpnSubnet };
 	}
 }
