@@ -6,17 +6,20 @@ Electron-basierter WireGuard VPN-Client mit nativer WireGuard-Integration (FFI),
 
 | Feature | Beschreibung |
 |---------|-------------|
-| **Native WireGuard** | Direkte FFI-Anbindung an `wireguard.dll` / `wintun.dll` via Koffi |
+| **Native WireGuard** | Direkte FFI-Anbindung an `wireguard.dll` / `wintun.dll` via Koffi — keine Installation nötig |
 | **Auto-Connect** | Verbindet beim Windows-Start automatisch |
 | **Auto-Update** | Prüft automatisch auf neue Versionen, stiller Download, Update-Banner |
+| **Split-Tunneling** | Nur bestimmte IPs/Subnetze durch den VPN-Tunnel leiten |
 | **Kill-Switch** | Blockiert allen Traffic außerhalb des VPN-Tunnels (Windows Firewall) |
 | **Erreichbare Dienste** | Zeigt alle Server-Routen als klickbare Liste nach Verbindungsaufbau |
 | **DNS-Leak-Test** | Prüft ob DNS-Anfragen durch den VPN-Tunnel gehen |
-| **Tray-Icon** | Status-Anzeige mit Kontextmenü und Versionsanzeige (grün/gelb/grau) |
+| **Peer-Ablauf-Warnung** | Benachrichtigung 7/3/1 Tag vor Ablauf des VPN-Zugangs |
+| **Traffic-Verbrauch** | Datenverbrauch (24h, 7 Tage, 30 Tage, Gesamt) vom Server |
+| **Bandbreiten-Graph** | Live-Canvas-Graph mit aktueller Download-/Upload-Geschwindigkeit |
+| **Tray-Icon** | Status-Anzeige, Tooltip mit Server-URL, Verbindungsdauer und Traffic |
 | **Config-Import** | Per `.conf`-Datei oder QR-Code (Webcam) |
 | **Server-Integration** | Config-Pull, automatische Updates, Heartbeat & Status-Reporting |
 | **Auto-Reconnect** | Exponential Backoff bei Verbindungsabbruch (2s → 60s, max 10 Versuche) |
-| **Traffic-Statistiken** | Echtzeit RX/TX, Handshake-Alter, Server-URL-Anzeige |
 
 ## Voraussetzungen
 

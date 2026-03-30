@@ -12,18 +12,22 @@ Vollständige Anleitung für Installation, Einrichtung und Nutzung des GateContr
 4. [Verbindung herstellen](#verbindung-herstellen)
 5. [Die Benutzeroberfläche](#die-benutzeroberfläche)
 6. [Erreichbare Dienste](#erreichbare-dienste)
-7. [DNS-Leak-Test](#dns-leak-test)
-8. [Kill-Switch](#kill-switch)
-9. [Tray-Icon](#tray-icon)
-10. [Konfiguration importieren](#konfiguration-importieren)
-11. [Einstellungen](#einstellungen)
-12. [Auto-Update](#auto-update)
-13. [Auto-Reconnect](#auto-reconnect)
-14. [Server-Synchronisation](#server-synchronisation)
-15. [Logs und Fehlerbehebung](#logs-und-fehlerbehebung)
-16. [Deinstallation](#deinstallation)
-17. [Datenspeicherung](#datenspeicherung)
-18. [Häufige Probleme](#häufige-probleme)
+7. [Traffic-Verbrauch](#traffic-verbrauch)
+8. [Bandbreiten-Graph](#bandbreiten-graph)
+9. [DNS-Leak-Test](#dns-leak-test)
+10. [Split-Tunneling](#split-tunneling)
+11. [Kill-Switch](#kill-switch)
+12. [Peer-Ablauf-Warnung](#peer-ablauf-warnung)
+13. [Tray-Icon](#tray-icon)
+14. [Konfiguration importieren](#konfiguration-importieren)
+15. [Einstellungen](#einstellungen)
+16. [Auto-Update](#auto-update)
+17. [Auto-Reconnect](#auto-reconnect)
+18. [Server-Synchronisation](#server-synchronisation)
+19. [Logs und Fehlerbehebung](#logs-und-fehlerbehebung)
+20. [Deinstallation](#deinstallation)
+21. [Datenspeicherung](#datenspeicherung)
+22. [Häufige Probleme](#häufige-probleme)
 
 ---
 
@@ -124,6 +128,8 @@ In der Titelleiste wird neben "GateControl" die aktuelle **Versionsnummer** ange
 | **Download/Upload** | Übertragene Datenmenge seit Verbindungsaufbau |
 | **Kill-Switch** | Schalter für den Netzwerk-Schutz |
 | **Erreichbare Dienste** | Liste der konfigurierten Routen auf dem Server (erscheint nach Verbindung) |
+| **Traffic-Verbrauch** | Datenverbrauch (24h, 7 Tage, 30 Tage, Gesamt) vom Server |
+| **Bandbreiten-Graph** | Live-Graph der aktuellen Download-/Upload-Geschwindigkeit |
 | **DNS-Leak-Test** | Button zum Prüfen ob DNS-Anfragen durch den VPN-Tunnel gehen |
 
 ### Settings-Seite
@@ -152,6 +158,36 @@ Ein Klick auf einen Dienst öffnet ihn direkt im Standard-Browser.
 
 ---
 
+## Traffic-Verbrauch
+
+Nach dem Verbindungsaufbau zeigt die Status-Seite den eigenen Datenverbrauch in vier Zeitfenstern an:
+
+| Zeitraum | Beschreibung |
+|----------|-------------|
+| **24h** | Verbrauch der letzten 24 Stunden |
+| **7 Tage** | Verbrauch der letzten 7 Tage |
+| **30 Tage** | Verbrauch der letzten 30 Tage |
+| **Gesamt** | Gesamter Verbrauch seit Peer-Erstellung |
+
+Jeder Zeitraum zeigt Download (grün) und Upload (blau) separat an. Die Daten werden vom GateControl-Server abgerufen.
+
+---
+
+## Bandbreiten-Graph
+
+Unterhalb der Statistik-Karten zeigt ein Live-Graph die aktuelle Bandbreite an:
+
+- **Grüne Linie** — Download-Geschwindigkeit
+- **Blaue Linie** — Upload-Geschwindigkeit
+- **Y-Achse** — Automatische Skalierung mit Maximalwert-Anzeige
+- **Zeitachse** — ca. 5 Minuten Historie (60 Datenpunkte)
+
+Zusätzlich wird die aktuelle Geschwindigkeit (z.B. `1.2 MB/s`) direkt unter den RX/TX-Werten angezeigt.
+
+Der Graph erscheint nur bei aktiver Verbindung.
+
+---
+
 ## DNS-Leak-Test
 
 Der DNS-Leak-Test prüft, ob DNS-Anfragen tatsächlich durch den VPN-Tunnel geleitet werden oder am Tunnel vorbei ins offene Internet gehen.
@@ -170,6 +206,44 @@ Der DNS-Leak-Test prüft, ob DNS-Anfragen tatsächlich durch den VPN-Tunnel gele
 | **DNS-Leak möglich** (rot) | DNS-Anfragen gehen möglicherweise am VPN vorbei. Empfehlung: Kill-Switch aktivieren oder DNS-Einstellungen prüfen. |
 
 Der Test zeigt zusätzlich die aktuell verwendeten DNS-Server an.
+
+> **Hinweis:** Ein DNS-Leak ohne aktivierten Kill-Switch ist normales Verhalten. Windows fragt DNS-Server auf allen Netzwerkadaptern parallel. Aktiviere den **Kill-Switch** um DNS-Leaks zu unterbinden.
+
+---
+
+## Split-Tunneling
+
+Split-Tunneling leitet nur bestimmte IPs und Subnetze durch den VPN-Tunnel. Alles andere geht direkt ins Internet.
+
+### Einrichten
+
+1. **Settings** öffnen
+2. **Split-Tunneling** Toggle aktivieren
+3. IP-Adressen und Subnetze eingeben (eine pro Zeile)
+4. **Speichern** klicken — die Verbindung wird automatisch neu aufgebaut
+
+### Eingabeformat
+
+| Eingabe | Bedeutung |
+|---------|-----------|
+| `10.0.0.0/8` | Gesamtes 10er-Netz durch VPN |
+| `192.168.1.0/24` | Ein lokales Subnetz durch VPN |
+| `172.16.5.100` | Eine einzelne IP durch VPN |
+
+### Automatisch geroutete Netze
+
+Folgende Routen werden immer automatisch hinzugefügt:
+- **VPN-Subnetz** (z.B. `10.8.0.0/24`) — für die Server-Kommunikation
+- **Server-Endpoint** — für den WireGuard-Tunnel selbst
+
+### Wann verwenden
+
+Split-Tunneling ist sinnvoll wenn:
+- Nur interne Firmendienste über VPN erreichbar sein sollen
+- Der restliche Internet-Traffic direkt (ohne VPN) laufen soll
+- Bandbreite gespart werden soll
+
+> **Hinweis:** Für vollen Schutz (alle DNS + alle Daten durch VPN) den Split-Tunnel **deaktiviert** lassen und den **Kill-Switch** aktivieren.
 
 ---
 
@@ -201,9 +275,32 @@ Kill-Switch Toggle ausschalten — alle Firewall-Regeln werden sofort entfernt.
 
 ---
 
+## Peer-Ablauf-Warnung
+
+Wenn der VPN-Zugang ein Ablaufdatum hat, warnt der Client rechtzeitig:
+
+| Verbleibend | Benachrichtigung | Banner auf Status-Seite |
+|-------------|-----------------|------------------------|
+| 7 Tage | "Peer-Ablauf Hinweis" | Dezent |
+| 3 Tage | "Peer läuft bald ab" | Gelb |
+| 1 Tag | "Peer läuft heute ab" | Rot |
+| Abgelaufen | "Peer abgelaufen" | Rot |
+
+Die Prüfung erfolgt automatisch nach jedem Verbindungsaufbau. Kontaktiere den Administrator um den Zugang zu verlängern.
+
+---
+
 ## Tray-Icon
 
 Die App läuft im System-Tray (Taskleiste unten rechts). Das Fenster-Schließen (X-Button) minimiert die App ins Tray — die VPN-Verbindung bleibt bestehen.
+
+### Tooltip (Hover)
+
+Bei Mauszeiger über dem Tray-Icon erscheint:
+- Verbindungsstatus
+- Server-URL
+- Verbindungsdauer (z.B. "2h 15m")
+- Download/Upload Traffic
 
 ### Status-Farben
 
