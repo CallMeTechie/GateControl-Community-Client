@@ -30,9 +30,36 @@ if (!gotLock) {
 // ── Konfiguration ────────────────────────────────────────────
 // Maschinenspezifischer Encryption Key (generiert beim ersten Start)
 const crypto = require('crypto');
+const fsSync = require('fs');
 const keyStore = new (require('electron-store'))({ name: 'gatecontrol-keyfile', encryptionKey: 'gc-bootstrap' });
 if (!keyStore.get('machineKey')) {
-	keyStore.set('machineKey', crypto.randomBytes(32).toString('hex'));
+	// Migration: Bestehende Config mit altem Key lesen und mit neuem Key neu schreiben
+	const newKey = crypto.randomBytes(32).toString('hex');
+	try {
+		const oldStore = new Store({ name: 'gatecontrol-config', encryptionKey: 'gatecontrol-v1' });
+		const oldData = oldStore.store;
+		if (oldData && Object.keys(oldData).length > 0) {
+			// Alte Config-Datei löschen
+			const oldPath = oldStore.path;
+			oldStore.clear();
+			// Neuen Key speichern und dann Config mit neuem Key schreiben
+			keyStore.set('machineKey', newKey);
+			const newStore = new Store({ name: 'gatecontrol-config', encryptionKey: newKey });
+			for (const [k, v] of Object.entries(oldData)) {
+				newStore.set(k, v);
+			}
+		} else {
+			keyStore.set('machineKey', newKey);
+		}
+	} catch {
+		// Alte Config nicht lesbar (Erstinstallation oder bereits korrupt)
+		keyStore.set('machineKey', newKey);
+		// Korrupte Config-Datei entfernen
+		try {
+			const configPath = path.join(app.getPath('userData'), 'gatecontrol-config.json');
+			if (fsSync.existsSync(configPath)) fsSync.unlinkSync(configPath);
+		} catch {}
+	}
 }
 const store = new Store({
 	name: 'gatecontrol-config',
