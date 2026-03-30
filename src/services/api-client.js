@@ -89,11 +89,13 @@ class ApiClient {
 
 		const hostname = os.hostname();
 		const platform = `${os.platform()} ${os.release()}`;
+		const clientVersion = require('../../package.json').version;
 
 		const { data } = await this.client.post('/api/v1/client/register', {
 			hostname,
 			platform,
-			clientVersion: '1.0.0',
+			clientVersion,
+			peerId: this.peerId || null,
 		});
 
 		this.peerId = data.peerId;
