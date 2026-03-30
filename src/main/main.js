@@ -5,7 +5,7 @@
  * Kill-Switch und API-Kommunikation mit dem GateControl-Server.
  */
 
-const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, dialog, Notification } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, dialog, Notification, screen } = require('electron');
 const path = require('path');
 const Store = require('electron-store');
 const log = require('electron-log');
@@ -230,9 +230,9 @@ function updateTray(state) {
 // ── Fenster ──────────────────────────────────────────────────
 function createWindow() {
 	mainWindow = new BrowserWindow({
-		width: 394,
-		height: 720,
-		minHeight: 600,
+		width: Math.round(590 / screen.getPrimaryDisplay().scaleFactor),
+		height: Math.round(720 / screen.getPrimaryDisplay().scaleFactor),
+		minHeight: Math.round(600 / screen.getPrimaryDisplay().scaleFactor),
 		resizable: false,
 		frame: false,
 		transparent: false,
