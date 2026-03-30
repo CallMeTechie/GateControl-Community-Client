@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.11] — 2026-03-30
+
+### Fixes
+- default window height 1280px physical, resizable with persistent save
+
+---
+
 ## [1.7.10] — 2026-03-30
 
 ### Fixes
