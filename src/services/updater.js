@@ -64,10 +64,15 @@ class Updater {
    * Update-Check durchführen
    */
   async _check() {
-    if (!this.serverUrl || !this.apiKey) return;
+    if (!this.serverUrl || !this.apiKey) {
+      this.log.debug('Update-Check übersprungen: Server oder API-Key nicht konfiguriert');
+      return;
+    }
 
     try {
       const url = `${this.serverUrl.replace(/\/+$/, '')}/api/v1/client/update/check`;
+      this.log.info(`Update-Check: ${url} (aktuelle Version: ${this.currentVersion})`);
+
       const res = await axios.get(url, {
         params: { version: this.currentVersion, platform: 'windows' },
         headers: {
@@ -77,8 +82,10 @@ class Updater {
         timeout: 15000,
       });
 
+      this.log.info(`Update-Check Antwort: ${JSON.stringify(res.data)}`);
+
       if (!res.data?.ok || !res.data?.available) {
-        this.log.debug(`Kein Update verfügbar (aktuell: ${this.currentVersion})`);
+        this.log.info(`Kein Update verfügbar (aktuell: ${this.currentVersion})`);
         return;
       }
 
@@ -98,7 +105,10 @@ class Updater {
    * Installer herunterladen
    */
   async _download() {
-    if (!this.latestRelease?.downloadUrl) return;
+    if (!this.latestRelease?.downloadUrl) {
+      this.log.warn('Kein Download-URL vorhanden');
+      return;
+    }
 
     const { downloadUrl, fileName, version } = this.latestRelease;
     const tmpDir = path.join(os.tmpdir(), 'gatecontrol-update');
