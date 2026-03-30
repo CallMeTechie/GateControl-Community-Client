@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.0] — 2026-03-30
+
+### Features
+- traffic usage display (24h, 7d, 30d, total) on status page
+
+---
+
 ## [1.5.4] — 2026-03-30
 
 ### Fixes
