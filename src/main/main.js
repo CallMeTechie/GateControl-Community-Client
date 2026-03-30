@@ -532,6 +532,7 @@ function registerIpcHandlers() {
 
 	// Services & DNS-Leak-Test
 	ipcMain.handle('services:list', () => apiClient?.getServices());
+	ipcMain.handle('traffic:stats', () => apiClient?.getTraffic());
 	ipcMain.handle('dns:leak-test', async () => {
 		const dns = require('dns').promises;
 		const results = { passed: false, dnsServers: [], vpnCheck: null };

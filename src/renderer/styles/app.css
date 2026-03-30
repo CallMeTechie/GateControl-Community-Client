@@ -664,6 +664,49 @@ body {
 	display: block;
 }
 
+/* ═══ Traffic Usage ══════════════════════════════════════ */
+.traffic-usage {
+	margin-top: 12px;
+	padding: 12px;
+	background: var(--bg-2);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+}
+
+.traffic-grid {
+	display: grid;
+	grid-template-columns: 1fr 1fr 1fr 1fr;
+	gap: 8px;
+	margin-top: 8px;
+}
+
+.traffic-card {
+	text-align: center;
+	padding: 8px 4px;
+	background: var(--bg-3);
+	border-radius: var(--radius-sm);
+}
+
+.traffic-card-label {
+	font-size: 9px;
+	color: var(--text-3);
+	text-transform: uppercase;
+	letter-spacing: 0.3px;
+	margin-bottom: 4px;
+}
+
+.traffic-card-rx {
+	font-size: 11px;
+	font-family: var(--font-mono);
+	color: var(--accent);
+}
+
+.traffic-card-tx {
+	font-size: 11px;
+	font-family: var(--font-mono);
+	color: #3B82F6;
+}
+
 /* ═══ Services List ══════════════════════════════════════ */
 .services-section {
 	margin-top: 16px;

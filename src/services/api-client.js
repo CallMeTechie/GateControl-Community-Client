@@ -217,6 +217,23 @@ class ApiClient {
 	}
 
 	/**
+	 * Traffic-Verbrauch vom Server abrufen
+	 */
+	async getTraffic() {
+		if (!this.client || !this.peerId) return null;
+
+		try {
+			const res = await this.client.get('/api/v1/client/traffic', {
+				params: { peerId: this.peerId },
+			});
+			return res.data?.traffic || null;
+		} catch (err) {
+			this.log.debug('Traffic-Abfrage fehlgeschlagen:', err.message);
+			return null;
+		}
+	}
+
+	/**
 	 * Peer-Info vom Server abrufen (inkl. Ablaufdatum)
 	 */
 	async getPeerInfo() {

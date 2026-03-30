@@ -3,7 +3,7 @@
  * UI-Logik und State Management
  */
 
-const { tunnel, server, config, killSwitch, autostart, logs, update, services, dns, shell, peer, getVersion, window: win } = window.gatecontrol;
+const { tunnel, server, config, killSwitch, autostart, logs, update, services, traffic, dns, shell, peer, getVersion, window: win } = window.gatecontrol;
 
 // Version anzeigen
 getVersion().then(v => {
@@ -619,10 +619,53 @@ async function loadServices() {
 	});
 }
 
-// Dienste laden wenn verbunden
+// Dienste und Traffic laden wenn verbunden
 tunnel.onState((s) => {
-	if (s.connected || s.status === 'connected') loadServices();
+	if (s.connected || s.status === 'connected') {
+		loadServices();
+		loadTraffic();
+	}
 });
+
+// ── Traffic-Verbrauch ───────────────────────────────────
+async function loadTraffic() {
+	const data = await traffic.stats();
+	const section = $('#traffic-usage');
+	const grid = $('#traffic-grid');
+	if (!data || !section || !grid) return;
+
+	section.style.display = '';
+	grid.textContent = '';
+
+	const periods = [
+		{ label: '24h', data: data.last24h },
+		{ label: '7 Tage', data: data.last7d },
+		{ label: '30 Tage', data: data.last30d },
+		{ label: 'Gesamt', data: data.total },
+	];
+
+	for (const p of periods) {
+		const card = document.createElement('div');
+		card.className = 'traffic-card';
+
+		const label = document.createElement('div');
+		label.className = 'traffic-card-label';
+		label.textContent = p.label;
+		card.appendChild(label);
+
+		const rx = document.createElement('div');
+		rx.className = 'traffic-card-rx';
+		rx.textContent = `↓ ${formatBytes(p.data?.rx || 0)}`;
+		card.appendChild(rx);
+
+		const tx = document.createElement('div');
+		tx.className = 'traffic-card-tx';
+		tx.textContent = `↑ ${formatBytes(p.data?.tx || 0)}`;
+		card.appendChild(tx);
+
+		grid.appendChild(card);
+	}
+}
 
 // ── DNS-Leak-Test ───────────────────────────────────────
 const dnsBtn = $('#dns-test-btn');
