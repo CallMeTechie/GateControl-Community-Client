@@ -11,6 +11,18 @@ getVersion().then(v => {
 	if (el) el.textContent = `v${v}`;
 });
 
+// Theme laden
+config.get('app.theme').then(theme => {
+	applyTheme(theme || 'dark');
+});
+
+function applyTheme(theme) {
+	document.documentElement.setAttribute('data-theme', theme);
+	document.querySelectorAll('.theme-btn').forEach(btn => {
+		btn.classList.toggle('active', btn.dataset.theme === theme);
+	});
+}
+
 // ── DOM-Elemente ─────────────────────────────────────────
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
@@ -179,6 +191,7 @@ config.getAll().then(cfg => {
 	el.apiKey.value = cfg.server?.apiKey || '';
 	el.optAutostart.checked = cfg.app?.startWithWindows ?? true;
 	el.optMinimized.checked = cfg.app?.startMinimized ?? true;
+	applyTheme(cfg.app?.theme || 'dark');
 	el.optAutoconnect.checked = cfg.tunnel?.autoConnect ?? true;
 	el.optCheckInterval.value = cfg.app?.checkInterval ?? 30;
 	el.optPollInterval.value = cfg.app?.configPollInterval ?? 300;
@@ -343,6 +356,15 @@ el.optPollInterval.addEventListener('change', (e) => {
 	const val = Math.max(30, Math.min(3600, parseInt(e.target.value, 10) || 300));
 	e.target.value = val;
 	config.set('app.configPollInterval', val);
+});
+
+// ── Theme Switch ────────────────────────────────────────
+document.querySelectorAll('.theme-btn').forEach(btn => {
+	btn.addEventListener('click', () => {
+		const theme = btn.dataset.theme;
+		applyTheme(theme);
+		config.set('app.theme', theme);
+	});
 });
 
 // ── Split-Tunneling ─────────────────────────────────────

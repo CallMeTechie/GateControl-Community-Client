@@ -49,6 +49,72 @@
 	--titlebar-h: 38px;
 }
 
+/* ── Light Theme ───────────────────────────────────────── */
+[data-theme="light"] {
+	--bg-0:       #FFFFFF;
+	--bg-1:       #F8F9FB;
+	--bg-2:       #F0F1F4;
+	--bg-3:       #E8EAF0;
+	--bg-hover:   #E0E2EA;
+	--bg-active:  #D8DAE4;
+
+	--border-1:   #D5D8E0;
+	--border-2:   #C8CCD6;
+	--border-3:   #B0B4C0;
+
+	--text-1:     #1A1D2B;
+	--text-2:     #4A5068;
+	--text-3:     #8890A4;
+	--text-4:     #A8B0C0;
+
+	--accent:     #16A34A;
+	--accent-dim: #15803D;
+	--accent-bg:  rgba(22, 163, 74, 0.08);
+	--accent-border: rgba(22, 163, 74, 0.20);
+
+	--warn:       #D97706;
+	--warn-bg:    rgba(217, 119, 6, 0.08);
+
+	--error:      #DC2626;
+	--error-bg:   rgba(220, 38, 38, 0.08);
+
+	--blue:       #2563EB;
+	--blue-bg:    rgba(37, 99, 235, 0.08);
+}
+
+/* ── Theme Switch ──────────────────────────────────────── */
+.theme-switch {
+	display: flex;
+	background: var(--bg-3);
+	border-radius: 6px;
+	padding: 2px;
+	gap: 2px;
+}
+
+.theme-btn {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 32px;
+	height: 26px;
+	border: none;
+	border-radius: 4px;
+	background: transparent;
+	color: var(--text-3);
+	cursor: pointer;
+	transition: all 0.15s;
+}
+
+.theme-btn:hover {
+	color: var(--text-1);
+}
+
+.theme-btn.active {
+	background: var(--bg-1);
+	color: var(--accent);
+	box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
 /* ── Reset ──────────────────────────────────────────────── */
 *, *::before, *::after {
 	margin: 0;

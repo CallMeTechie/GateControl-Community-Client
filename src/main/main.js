@@ -58,6 +58,7 @@ const store = new Store({
 			properties: {
 				startMinimized: { type: 'boolean', default: true },
 				startWithWindows: { type: 'boolean', default: true },
+				theme:          { type: 'string', default: 'dark' },
 				checkInterval:  { type: 'number', default: 30 },
 				configPollInterval: { type: 'number', default: 300 },
 			},
@@ -236,7 +237,7 @@ function createWindow() {
 		resizable: true,
 		frame: false,
 		transparent: false,
-		backgroundColor: '#0F1117',
+		backgroundColor: store.get('app.theme', 'dark') === 'light' ? '#F8F9FB' : '#0F1117',
 		titleBarStyle: 'hidden',
 		show: false,
 		icon: getIcon('disconnected'),
