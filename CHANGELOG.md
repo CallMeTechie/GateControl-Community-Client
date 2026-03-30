@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.3] — 2026-03-30
+
+### Fixes
+- prevent DNS leak by redirecting physical adapter DNS through VPN tunnel
+
+---
+
 ## [1.3.2] — 2026-03-30
 
 ### Dokumentation
