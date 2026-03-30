@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.3] — 2026-03-30
+
+### Fixes
+- move version bumping to CI/CD workflow (local hooks unreliable)
+
+---
+
 ## [1.2.2] — 2026-03-29
 
 ### Fixes
