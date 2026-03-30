@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.14] — 2026-03-30
+
+### Fixes
+- low priority security — QR scan 60s timeout, formatBytes handles negative values
+
+---
+
 ## [1.7.13] — 2026-03-30
 
 ### Fixes
