@@ -278,12 +278,18 @@ $('#btn-import-qr').addEventListener('click', async () => {
 		qrStream = await navigator.mediaDevices.getUserMedia({
 			video: { facingMode: 'environment' }
 		});
-		
+
 		video.srcObject = qrStream;
 		preview.hidden = false;
-		
-		// QR-Code scannen
+
+		// QR-Code scannen mit 60s Timeout
 		scanQR();
+		setTimeout(() => {
+			if (qrStream) {
+				stopQRScan();
+				showServerStatus('QR-Scan Timeout — kein Code erkannt.', 'error');
+			}
+		}, 60000);
 	} catch (err) {
 		showServerStatus(`Kamera-Fehler: ${err.message}`, 'error');
 	}
@@ -425,7 +431,7 @@ $('#btn-refresh-logs').addEventListener('click', refreshLogs);
 
 // ── Helpers ──────────────────────────────────────────────
 function formatBytes(bytes) {
-	if (bytes === 0) return '0 B';
+	if (!bytes || bytes <= 0) return '0 B';
 	const units = ['B', 'KB', 'MB', 'GB', 'TB'];
 	const i = Math.floor(Math.log(bytes) / Math.log(1024));
 	const val = (bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0);
