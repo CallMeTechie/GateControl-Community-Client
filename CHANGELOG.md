@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.10] — 2026-03-30
+
+### Fixes
+- persist window height across restarts
+
+---
+
 ## [1.7.9] — 2026-03-30
 
 ### Fixes
