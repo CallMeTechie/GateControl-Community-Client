@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.4] — 2026-03-30
+
+### Fixes
+- fixed window width, correct app name in Windows notifications
+
+---
+
 ## [1.3.3] — 2026-03-30
 
 ### Fixes
