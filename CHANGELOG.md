@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.1] — 2026-03-30
+
+### Fixes
+- robust DNS leak prevention using NRPT rules + DNS cache flush
+
+---
+
 ## [1.4.0] — 2026-03-30
 
 ### Features
