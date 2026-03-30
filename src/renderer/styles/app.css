@@ -733,6 +733,7 @@ body {
 /* ═══ Traffic Usage ══════════════════════════════════════ */
 .traffic-usage {
 	margin-top: 12px;
+	margin-bottom: 12px;
 	padding: 12px;
 	background: var(--bg-2);
 	border: 1px solid var(--border);
