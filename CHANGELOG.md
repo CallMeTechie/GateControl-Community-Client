@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.17] — 2026-03-30
+
+### Fixes
+- delete old config file BEFORE electron-store constructor reads it
+
+---
+
 ## [1.7.16] — 2026-03-30
 
 ### Fixes
