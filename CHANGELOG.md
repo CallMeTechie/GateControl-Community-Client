@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.6] — 2026-03-30
+
+### Fixes
+- DPI-aware window size — adapts to any display scaling factor
+
+---
+
 ## [1.7.5] — 2026-03-30
 
 ### Fixes
