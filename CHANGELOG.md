@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.4] — 2026-03-30
+
+### Dokumentation
+- CHANGELOG mit allen fehlenden Features nachgetragen
+
+---
+
 ## [1.2.3] — 2026-03-30
 
 ### Fixes
