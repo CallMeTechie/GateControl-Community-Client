@@ -232,7 +232,7 @@ function createWindow() {
 	mainWindow = new BrowserWindow({
 		width: Math.round(590 / screen.getPrimaryDisplay().scaleFactor),
 		maxWidth: Math.round(590 / screen.getPrimaryDisplay().scaleFactor),
-		height: Math.round((store.get('app.windowHeight', 720)) / screen.getPrimaryDisplay().scaleFactor),
+		height: Math.round(store.get('app.windowHeight', 1280) / screen.getPrimaryDisplay().scaleFactor),
 		minHeight: Math.round(500 / screen.getPrimaryDisplay().scaleFactor),
 		resizable: true,
 		frame: false,
