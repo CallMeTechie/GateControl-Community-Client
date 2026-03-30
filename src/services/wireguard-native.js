@@ -476,14 +476,26 @@ class WireGuardNative {
         this.log.warn(`DNS-Konfiguration fehlgeschlagen: ${err.message}`);
       }
 
-      // DNS-Leak verhindern: physische Interfaces auf VPN-DNS umstellen
+      // DNS-Leak verhindern: Dreistufiger Schutz
       try {
+        // 1. NRPT-Regel: Alle DNS-Anfragen (.*) an VPN-DNS erzwingen
+        const nrptDns = dnsServers.map(s => `"${s}"`).join(',');
+        await execAsync(
+          `powershell -Command "Add-DnsClientNrptRule -Namespace '.' -NameServers ${nrptDns} -Comment 'GateControl VPN' -ErrorAction SilentlyContinue"`
+        );
+        this.log.info(`NRPT-Regel gesetzt: .* → ${dnsServers.join(', ')}`);
+        this._nrptActive = true;
+      } catch (err) {
+        this.log.warn(`NRPT-Regel fehlgeschlagen: ${err.message}`);
+      }
+
+      try {
+        // 2. Physische Interfaces: DNS umstellen (Fallback)
         const { stdout } = await execAsync(
           'powershell -Command "Get-NetAdapter | Where-Object {$_.Status -eq \'Up\' -and $_.InterfaceDescription -notlike \'*GateControl*\'} | Select-Object -ExpandProperty Name"'
         );
         const adapters = stdout.trim().split('\n').map(s => s.trim()).filter(Boolean);
 
-        // Bestehende DNS-Einstellungen sichern
         this._savedDns = [];
         for (const adapter of adapters) {
           try {
@@ -491,18 +503,23 @@ class WireGuardNative {
               `powershell -Command "(Get-DnsClientServerAddress -InterfaceAlias '${adapter}' -AddressFamily IPv4).ServerAddresses -join ','"`
             );
             this._savedDns.push({ adapter, dns: dnsOut.trim() });
-            // DNS auf VPN-DNS umstellen
             await execAsync(
               `netsh interface ip set dns "${adapter}" static ${dnsServers[0]}`
             );
             this.log.info(`DNS-Leak-Schutz: ${adapter} → ${dnsServers[0]}`);
           } catch (err) {
-            this.log.debug(`DNS-Umstellung für ${adapter} fehlgeschlagen: ${err.message}`);
+            this.log.debug(`DNS für ${adapter} fehlgeschlagen: ${err.message}`);
           }
         }
       } catch (err) {
-        this.log.warn(`DNS-Leak-Schutz fehlgeschlagen: ${err.message}`);
+        this.log.warn(`DNS-Interface-Schutz fehlgeschlagen: ${err.message}`);
       }
+
+      try {
+        // 3. DNS-Cache leeren
+        await execAsync('ipconfig /flushdns');
+        this.log.info('DNS-Cache geleert');
+      } catch {}
     }
 
     // Default-Route setzen falls AllowedIPs 0.0.0.0/0 enthält
@@ -581,6 +598,17 @@ class WireGuardNative {
       this.adapter = null;
     }
 
+    // NRPT-Regel entfernen
+    if (this._nrptActive) {
+      try {
+        await execAsync(
+          'powershell -Command "Get-DnsClientNrptRule | Where-Object {$_.Comment -eq \'GateControl VPN\'} | Remove-DnsClientNrptRule -Force -ErrorAction SilentlyContinue"'
+        );
+        this.log.info('NRPT-Regel entfernt');
+      } catch { /* ok */ }
+      this._nrptActive = false;
+    }
+
     // DNS der physischen Interfaces wiederherstellen
     if (this._savedDns && this._savedDns.length > 0) {
       for (const { adapter, dns } of this._savedDns) {
@@ -596,6 +624,9 @@ class WireGuardNative {
       }
       this._savedDns = null;
     }
+
+    // DNS-Cache leeren
+    try { await execAsync('ipconfig /flushdns'); } catch {}
 
     // Endpoint-Route aufräumen
     if (this._endpointRoute) {
