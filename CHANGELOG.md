@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.3] — 2026-03-30
+
+### Fixes
+- update tray tooltip on every stats refresh (was frozen at connect time)
+
+---
+
 ## [1.4.2] — 2026-03-30
 
 ### Fixes
