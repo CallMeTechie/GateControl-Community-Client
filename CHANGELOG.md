@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.8] — 2026-03-30
+
+### Fixes
+- allow vertical resizing, width stays fixed at 590px
+
+---
+
 ## [1.7.7] — 2026-03-30
 
 ### Dokumentation
