@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.1] — 2026-03-30
+
+### Fixes
+- show app version in titlebar, fix hardcoded X-Client-Version header
+
+---
+
 ## [1.3.0] — 2026-03-30
 
 ### Features
