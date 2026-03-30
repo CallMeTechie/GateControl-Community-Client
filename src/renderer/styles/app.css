@@ -122,16 +122,20 @@
 	box-sizing: border-box;
 }
 
-html, body {
+html {
 	height: 100%;
 	overflow: hidden;
 }
 
 body {
+	height: 100%;
+	overflow: hidden;
 	font-family: var(--font-sans);
 	font-size: 13px;
 	color: var(--text-1);
 	background: var(--bg-1);
+	border-radius: 12px;
+	border: 1px solid var(--border-1);
 	-webkit-font-smoothing: antialiased;
 	user-select: none;
 }
@@ -463,10 +467,11 @@ body {
 	border-radius: var(--radius-md);
 }
 .toggle-row.compact {
-	background: transparent;
-	border: none;
-	padding: 10px 0;
-	border-bottom: 1px solid var(--border-1);
+	background: var(--bg-2);
+	border: 1px solid var(--border-1);
+	border-radius: var(--radius-md);
+	padding: 10px 12px;
+	margin-bottom: 6px;
 }
 
 .toggle-info {
