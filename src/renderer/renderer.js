@@ -26,6 +26,8 @@ const el = {
 	statHandshake: $('#stat-handshake'),
 	statRx:       $('#stat-rx'),
 	statTx:       $('#stat-tx'),
+	statRxSpeed:  $('#stat-rx-speed'),
+	statTxSpeed:  $('#stat-tx-speed'),
 	killswitchToggle: $('#killswitch-toggle'),
 	
 	// Settings
@@ -90,7 +92,7 @@ tunnel.getStatus().then(s => {
 
 // ── UI Update ────────────────────────────────────────────
 function updateUI() {
-	const { status, connected, endpoint, handshake, rxBytes, txBytes, killSwitch: ks } = state;
+	const { status, connected, endpoint, handshake, rxBytes, txBytes, rxSpeed, txSpeed, killSwitch: ks } = state;
 	
 	// Ring
 	el.ringFill.classList.remove('connected', 'connecting');
@@ -131,7 +133,21 @@ function updateUI() {
 	el.statHandshake.textContent = handshake || '—';
 	el.statRx.textContent = formatBytes(rxBytes || 0);
 	el.statTx.textContent = formatBytes(txBytes || 0);
-	
+
+	// Speed
+	if (connected && (rxSpeed || txSpeed)) {
+		el.statRxSpeed.textContent = formatSpeed(rxSpeed || 0);
+		el.statTxSpeed.textContent = formatSpeed(txSpeed || 0);
+		updateBandwidthGraph(rxSpeed || 0, txSpeed || 0);
+	} else {
+		el.statRxSpeed.textContent = '';
+		el.statTxSpeed.textContent = '';
+	}
+
+	// Bandwidth graph visibility
+	const bwSection = $('#bandwidth-section');
+	if (bwSection) bwSection.style.display = connected ? '' : 'none';
+
 	// Kill-Switch
 	el.killswitchToggle.checked = ks || false;
 }
@@ -340,6 +356,100 @@ function formatBytes(bytes) {
 	const i = Math.floor(Math.log(bytes) / Math.log(1024));
 	const val = (bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0);
 	return `${val} ${units[i]}`;
+}
+
+function formatSpeed(bytesPerSec) {
+	if (bytesPerSec < 1) return '';
+	if (bytesPerSec < 1024) return `${Math.round(bytesPerSec)} B/s`;
+	if (bytesPerSec < 1048576) return `${(bytesPerSec / 1024).toFixed(1)} KB/s`;
+	return `${(bytesPerSec / 1048576).toFixed(1)} MB/s`;
+}
+
+// ── Bandwidth Graph (Canvas) ─────────────────────────────
+const BW_HISTORY_LEN = 60; // 60 Datenpunkte (~5 min bei 5s Intervall)
+const bwHistory = { rx: [], tx: [] };
+
+function updateBandwidthGraph(rxSpeed, txSpeed) {
+	bwHistory.rx.push(rxSpeed);
+	bwHistory.tx.push(txSpeed);
+	if (bwHistory.rx.length > BW_HISTORY_LEN) bwHistory.rx.shift();
+	if (bwHistory.tx.length > BW_HISTORY_LEN) bwHistory.tx.shift();
+
+	const canvas = document.getElementById('bandwidth-canvas');
+	if (!canvas) return;
+
+	const ctx = canvas.getContext('2d');
+	const dpr = window.devicePixelRatio || 1;
+	const w = canvas.clientWidth;
+	const h = canvas.clientHeight;
+
+	canvas.width = w * dpr;
+	canvas.height = h * dpr;
+	ctx.scale(dpr, dpr);
+
+	ctx.clearRect(0, 0, w, h);
+
+	const allValues = [...bwHistory.rx, ...bwHistory.tx];
+	const maxVal = Math.max(...allValues, 1024); // min 1 KB/s scale
+
+	// Grid lines
+	ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+	ctx.lineWidth = 1;
+	for (let i = 1; i < 4; i++) {
+		const y = (h / 4) * i;
+		ctx.beginPath();
+		ctx.moveTo(0, y);
+		ctx.lineTo(w, y);
+		ctx.stroke();
+	}
+
+	// Scale label
+	ctx.fillStyle = 'rgba(255,255,255,0.2)';
+	ctx.font = '9px monospace';
+	ctx.fillText(formatSpeed(maxVal), 2, 10);
+
+	// Draw line
+	function drawLine(data, color) {
+		if (data.length < 2) return;
+		const step = w / (BW_HISTORY_LEN - 1);
+
+		// Fill area
+		ctx.beginPath();
+		ctx.moveTo(0, h);
+		for (let i = 0; i < data.length; i++) {
+			const x = (BW_HISTORY_LEN - data.length + i) * step;
+			const y = h - (data[i] / maxVal) * (h - 12);
+			ctx.lineTo(x, y);
+		}
+		ctx.lineTo((BW_HISTORY_LEN - 1) * step, h);
+		ctx.closePath();
+		ctx.fillStyle = color.replace('1)', '0.1)');
+		ctx.fill();
+
+		// Stroke line
+		ctx.beginPath();
+		for (let i = 0; i < data.length; i++) {
+			const x = (BW_HISTORY_LEN - data.length + i) * step;
+			const y = h - (data[i] / maxVal) * (h - 12);
+			i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+		}
+		ctx.strokeStyle = color;
+		ctx.lineWidth = 1.5;
+		ctx.stroke();
+	}
+
+	drawLine(bwHistory.rx, 'rgba(34, 197, 94, 1)');  // grün = download
+	drawLine(bwHistory.tx, 'rgba(59, 130, 246, 1)');  // blau = upload
+
+	// Legend
+	ctx.fillStyle = 'rgba(34, 197, 94, 0.8)';
+	ctx.fillRect(w - 90, 4, 8, 8);
+	ctx.fillStyle = 'rgba(59, 130, 246, 0.8)';
+	ctx.fillRect(w - 90, 16, 8, 8);
+	ctx.fillStyle = 'rgba(255,255,255,0.4)';
+	ctx.font = '9px sans-serif';
+	ctx.fillText('↓ Download', w - 78, 12);
+	ctx.fillText('↑ Upload', w - 78, 24);
 }
 
 // ── Stats Refresh Timer ──────────────────────────────────

@@ -94,6 +94,14 @@ const RESOURCES_PATH = app.isPackaged
 const WG_CONFIG_DIR = path.join(app.getPath('userData'), 'wireguard');
 const WG_CONFIG_FILE = path.join(WG_CONFIG_DIR, 'gatecontrol0.conf');
 
+// ── Helpers ──────────────────────────────────────────────────
+function formatBytesShort(bytes) {
+	if (bytes === 0) return '0 B';
+	const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+	const i = Math.floor(Math.log(bytes) / Math.log(1024));
+	return (bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0) + ' ' + units[i];
+}
+
 // ── Tray Icon ────────────────────────────────────────────────
 function getIcon(state) {
 	const iconName = state === 'connected' ? 'tray-connected'
@@ -140,7 +148,21 @@ function updateTray(state) {
 		: state === 'connecting' ? 'Verbinde...'
 		: 'Getrennt';
 	
-	tray.setToolTip(`GateControl – ${statusText}`);
+	let tooltip = `GateControl – ${statusText}`;
+	if (tunnelState.connected) {
+		const serverUrl = store.get('server.url', '');
+		if (serverUrl) tooltip += `\n${serverUrl}`;
+		if (tunnelState.connectedSince) {
+			const dur = Math.floor((Date.now() - new Date(tunnelState.connectedSince).getTime()) / 1000);
+			const h = Math.floor(dur / 3600);
+			const m = Math.floor((dur % 3600) / 60);
+			tooltip += `\nVerbunden seit: ${h > 0 ? h + 'h ' : ''}${m}m`;
+		}
+		const rx = tunnelState.rxBytes || 0;
+		const tx = tunnelState.txBytes || 0;
+		tooltip += `\n↓ ${formatBytesShort(rx)}  ↑ ${formatBytesShort(tx)}`;
+	}
+	tray.setToolTip(tooltip);
 	
 	const contextMenu = Menu.buildFromTemplate([
 		{
@@ -441,6 +463,8 @@ function broadcastState(status, error = null) {
 		handshake: tunnelState.handshake,
 		rxBytes: tunnelState.rxBytes,
 		txBytes: tunnelState.txBytes,
+		rxSpeed: tunnelState.rxSpeed || 0,
+		txSpeed: tunnelState.txSpeed || 0,
 		connectedSince: tunnelState.connectedSince,
 		killSwitch: store.get('tunnel.killSwitch', false),
 	};
@@ -630,7 +654,16 @@ async function initServices() {
 		interval: store.get('app.checkInterval', 30) * 1000,
 		onDisconnect: handleDisconnect,
 		onStats: (stats) => {
-			tunnelState = { ...tunnelState, ...stats };
+			// Bandbreite berechnen (Bytes/s)
+			const now = Date.now();
+			if (tunnelState._lastStatsTime && stats.rxBytes !== undefined) {
+				const dt = (now - tunnelState._lastStatsTime) / 1000;
+				if (dt > 0) {
+					stats.rxSpeed = Math.max(0, ((stats.rxBytes || 0) - (tunnelState.rxBytes || 0)) / dt);
+					stats.txSpeed = Math.max(0, ((stats.txBytes || 0) - (tunnelState.txBytes || 0)) / dt);
+				}
+			}
+			tunnelState = { ...tunnelState, ...stats, _lastStatsTime: now };
 			broadcastState(tunnelState.connected ? 'connected' : 'disconnected');
 		},
 		wgService,

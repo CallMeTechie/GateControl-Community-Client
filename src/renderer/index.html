@@ -94,11 +94,18 @@
 					<div class="stat-card">
 						<div class="stat-label">↓ Empfangen</div>
 						<div class="stat-value mono" id="stat-rx">0 B</div>
+						<div class="stat-speed" id="stat-rx-speed"></div>
 					</div>
 					<div class="stat-card">
 						<div class="stat-label">↑ Gesendet</div>
 						<div class="stat-value mono" id="stat-tx">0 B</div>
+						<div class="stat-speed" id="stat-tx-speed"></div>
 					</div>
+				</div>
+
+				<!-- Bandwidth Graph -->
+				<div class="bandwidth-graph" id="bandwidth-section" style="display:none">
+					<canvas id="bandwidth-canvas" width="440" height="80"></canvas>
 				</div>
 
 				<!-- Kill-Switch Toggle -->

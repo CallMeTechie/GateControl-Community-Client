@@ -642,6 +642,28 @@ body {
 	user-select: text;
 }
 
+/* ═══ Bandwidth Speed ════════════════════════════════════ */
+.stat-speed {
+	font-size: 9px;
+	font-family: var(--font-mono);
+	color: var(--text-3);
+	margin-top: 2px;
+}
+
+.bandwidth-graph {
+	margin-top: 12px;
+	padding: 8px;
+	background: var(--bg-2);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+}
+
+.bandwidth-graph canvas {
+	width: 100%;
+	height: 80px;
+	display: block;
+}
+
 /* ═══ Services List ══════════════════════════════════════ */
 .services-section {
 	margin-top: 16px;
