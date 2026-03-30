@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0] — 2026-03-30
+
+### Features
+- tray tooltip with stats and live bandwidth graph
+
+---
+
 ## [1.3.4] — 2026-03-30
 
 ### Fixes
