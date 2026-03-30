@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.1] — 2026-03-30
+
+### Fixes
+- service item hover uses theme variable instead of hardcoded dark color
+
+---
+
 ## [1.7.0] — 2026-03-30
 
 ### Features
