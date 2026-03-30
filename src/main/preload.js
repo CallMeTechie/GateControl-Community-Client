@@ -53,12 +53,23 @@ contextBridge.exposeInMainWorld('gatecontrol', {
 		get: () => ipcRenderer.invoke('logs:get'),
 	},
 	
+	// ── Update ───────────────────────────────────────────
+	update: {
+		check:   () => ipcRenderer.invoke('update:check'),
+		install: () => ipcRenderer.invoke('update:install'),
+		onReady: (cb) => {
+			const handler = (_, info) => cb(info);
+			ipcRenderer.on('update-ready', handler);
+			return () => ipcRenderer.removeListener('update-ready', handler);
+		},
+	},
+
 	// ── Fenster ──────────────────────────────────────────
 	window: {
 		minimize: () => ipcRenderer.send('window:minimize'),
 		close:    () => ipcRenderer.send('window:close'),
 	},
-	
+
 	// ── Navigation ───────────────────────────────────────
 	onNavigate: (cb) => {
 		const handler = (_, page) => cb(page);

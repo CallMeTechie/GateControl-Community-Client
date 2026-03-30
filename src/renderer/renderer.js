@@ -3,7 +3,7 @@
  * UI-Logik und State Management
  */
 
-const { tunnel, server, config, killSwitch, autostart, logs, window: win } = window.gatecontrol;
+const { tunnel, server, config, killSwitch, autostart, logs, update, window: win } = window.gatecontrol;
 
 // ── DOM-Elemente ─────────────────────────────────────────
 const $ = (sel) => document.querySelector(sel);
@@ -346,3 +346,38 @@ setInterval(async () => {
 		}
 	}
 }, 5000);
+
+// ── Auto-Update UI ──────────────────────────────────────
+function showUpdateBanner(info) {
+	const existing = $('#update-banner');
+	if (existing) existing.remove();
+
+	const banner = document.createElement('div');
+	banner.id = 'update-banner';
+	banner.style.cssText = 'position:fixed;bottom:0;left:0;right:0;padding:12px 16px;background:var(--bg-3);border-top:1px solid var(--accent);display:flex;align-items:center;gap:12px;z-index:100';
+
+	const text = document.createElement('div');
+	text.style.cssText = 'flex:1;font-size:12px;color:var(--text-1)';
+	const strong = document.createElement('strong');
+	strong.textContent = `Update v${info.version}`;
+	text.appendChild(strong);
+	text.appendChild(document.createTextNode(' bereit zur Installation'));
+	banner.appendChild(text);
+
+	const laterBtn = document.createElement('button');
+	laterBtn.textContent = 'Später';
+	laterBtn.style.cssText = 'padding:6px 12px;font-size:11px;background:transparent;color:var(--text-3);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer';
+	laterBtn.addEventListener('click', () => banner.remove());
+	banner.appendChild(laterBtn);
+
+	const installBtn = document.createElement('button');
+	installBtn.textContent = 'Jetzt neustarten';
+	installBtn.style.cssText = 'padding:6px 12px;font-size:11px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:600';
+	installBtn.addEventListener('click', () => update.install());
+	banner.appendChild(installBtn);
+
+	document.body.appendChild(banner);
+}
+
+update.onReady((info) => showUpdateBanner(info));
+update.check().then((info) => { if (info) showUpdateBanner(info); });

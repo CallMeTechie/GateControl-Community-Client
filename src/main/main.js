@@ -13,6 +13,7 @@ const log = require('electron-log');
 const WireGuardService = require('../services/wireguard-native');
 const KillSwitch = require('../services/killswitch');
 const ApiClient = require('../services/api-client');
+const Updater = require('../services/updater');
 const ConnectionMonitor = require('../services/connection-monitor');
 
 // ── Logging ──────────────────────────────────────────────────
@@ -70,6 +71,8 @@ let wgService = null;
 let killSwitch = null;
 let apiClient = null;
 let connectionMonitor = null;
+let updater = null;
+let pendingUpdate = null; // { version, releaseNotes, installerPath }
 
 // ── State ────────────────────────────────────────────────────
 let tunnelState = {
@@ -182,6 +185,13 @@ function updateTray(state) {
 				mainWindow?.webContents.send('navigate', 'settings');
 			},
 		},
+		...(pendingUpdate ? [
+			{ type: 'separator' },
+			{
+				label: `⬆ Update v${pendingUpdate.version} installieren`,
+				click: () => installUpdate(),
+			},
+		] : []),
 		{ type: 'separator' },
 		{
 			label: 'Beenden',
@@ -386,6 +396,41 @@ function showNotification(title, body) {
 	}
 }
 
+// ── Auto-Update UI ──────────────────────────────────────────
+function showUpdateNotification(release) {
+	showNotification('Update verfügbar', `Version ${release.version} wurde heruntergeladen.`);
+	mainWindow?.webContents.send('update-ready', {
+		version: release.version,
+		releaseNotes: release.releaseNotes,
+	});
+}
+
+async function installUpdate() {
+	if (!pendingUpdate || !updater?.isUpdateReady()) return false;
+
+	log.info('Update-Installation gestartet...');
+
+	// Tunnel sicher trennen
+	if (tunnelState.connected) {
+		await disconnectTunnel();
+	}
+
+	// Kill-Switch deaktivieren
+	if (store.get('tunnel.killSwitch', false)) {
+		try {
+			await killSwitch.disable();
+			store.set('tunnel.killSwitch', false);
+		} catch {}
+	}
+
+	// Installer starten
+	updater.install();
+
+	// App beenden
+	setTimeout(() => quitApp(), 1500);
+	return true;
+}
+
 // ── IPC Renderer ↔ Main ─────────────────────────────────────
 function broadcastState(status, error = null) {
 	const state = {
@@ -413,6 +458,10 @@ function registerIpcHandlers() {
 		killSwitch: store.get('tunnel.killSwitch', false),
 	}));
 	
+	// Update
+	ipcMain.handle('update:check', () => updater?.getUpdateInfo());
+	ipcMain.handle('update:install', () => installUpdate());
+
 	// Konfiguration
 	ipcMain.handle('config:get', (_, key) => store.get(key));
 	ipcMain.handle('config:set', (_, key, value) => store.set(key, value));
@@ -423,6 +472,7 @@ function registerIpcHandlers() {
 		store.set('server.url', url);
 		store.set('server.apiKey', apiKey);
 		apiClient.configure(url, apiKey);
+		updater?.configure(url, apiKey);
 
 		try {
 			// Erst Ping testen
@@ -601,6 +651,19 @@ app.whenReady().then(async () => {
 		}, pollInterval);
 	}
 	
+	// Auto-Update starten
+	updater = new Updater({
+		serverUrl: store.get('server.url', ''),
+		apiKey: store.get('server.apiKey', ''),
+		log,
+	});
+	updater.start((release) => {
+		pendingUpdate = release;
+		log.info(`Update bereit: v${release.version}`);
+		updateTray(tunnelState.connected ? 'connected' : 'disconnected');
+		showUpdateNotification(release);
+	});
+
 	// Autostart konfigurieren
 	if (store.get('app.startWithWindows', true)) {
 		app.setLoginItemSettings({
