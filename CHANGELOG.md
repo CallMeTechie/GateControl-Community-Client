@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.5] — 2026-03-30
+
+### Fixes
+- correct window width for 150% DPI scaling (394 logical = 590 physical px)
+
+---
+
 ## [1.7.4] — 2026-03-30
 
 ### Fixes
