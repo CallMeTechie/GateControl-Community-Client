@@ -3,7 +3,13 @@
  * UI-Logik und State Management
  */
 
-const { tunnel, server, config, killSwitch, autostart, logs, update, services, dns, shell, window: win } = window.gatecontrol;
+const { tunnel, server, config, killSwitch, autostart, logs, update, services, dns, shell, getVersion, window: win } = window.gatecontrol;
+
+// Version anzeigen
+getVersion().then(v => {
+	const el = document.getElementById('app-version');
+	if (el) el.textContent = `v${v}`;
+});
 
 // ── DOM-Elemente ─────────────────────────────────────────
 const $ = (sel) => document.querySelector(sel);

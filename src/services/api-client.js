@@ -52,7 +52,7 @@ class ApiClient {
 			headers: {
 				'Content-Type': 'application/json',
 				'X-API-Token': this.apiKey,
-				'X-Client-Version': '1.0.0',
+				'X-Client-Version': require('../../package.json').version,
 				'X-Client-Platform': 'windows',
 			},
 		});

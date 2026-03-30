@@ -6,6 +6,9 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('gatecontrol', {
+	// ── App ──────────────────────────────────────────────
+	getVersion: () => ipcRenderer.invoke('app:version'),
+
 	// ── Tunnel ───────────────────────────────────────────
 	tunnel: {
 		connect:    () => ipcRenderer.invoke('tunnel:connect'),

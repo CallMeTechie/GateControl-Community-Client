@@ -450,6 +450,7 @@ function broadcastState(status, error = null) {
 
 function registerIpcHandlers() {
 	// Tunnel-Steuerung
+	ipcMain.handle('app:version', () => app.getVersion());
 	ipcMain.handle('tunnel:connect', () => connectTunnel());
 	ipcMain.handle('tunnel:disconnect', () => disconnectTunnel());
 	ipcMain.handle('tunnel:status', () => ({
