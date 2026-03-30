@@ -219,7 +219,7 @@ $('#btn-test-server').addEventListener('click', async () => {
 		return;
 	}
 	
-	const result = await server.test();
+	const result = await server.test({ url, apiKey: key });
 	if (result.success) {
 		showServerStatus('Verbindung erfolgreich!', 'success');
 	} else {

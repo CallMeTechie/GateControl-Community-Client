@@ -89,10 +89,10 @@ class Updater {
         return;
       }
 
-      const { version, downloadUrl, fileName, releaseNotes } = res.data;
+      const { version, downloadUrl, fileName, fileSize, releaseNotes } = res.data;
       this.log.info(`Update verfügbar: ${this.currentVersion} → ${version}`);
 
-      this.latestRelease = { version, downloadUrl, fileName, releaseNotes };
+      this.latestRelease = { version, downloadUrl, fileName, fileSize, releaseNotes };
 
       // Im Hintergrund herunterladen
       await this._download();
@@ -145,6 +145,17 @@ class Updater {
         writer.on('finish', resolve);
         writer.on('error', reject);
       });
+
+      // Integrity Check: Dateigröße prüfen
+      if (this.latestRelease.fileSize) {
+        const stat = fs.statSync(filePath);
+        if (stat.size !== this.latestRelease.fileSize) {
+          this.log.error(`Integrity-Check fehlgeschlagen: erwartet ${this.latestRelease.fileSize}, bekam ${stat.size}`);
+          try { fs.unlinkSync(filePath); } catch {}
+          return;
+        }
+        this.log.info(`Integrity-Check bestanden (${stat.size} Bytes)`);
+      }
 
       this.downloadPath = filePath;
       this.log.info(`Update heruntergeladen: ${filePath}`);

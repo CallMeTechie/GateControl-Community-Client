@@ -24,7 +24,7 @@ contextBridge.exposeInMainWorld('gatecontrol', {
 	// ── Server ───────────────────────────────────────────
 	server: {
 		setup: (opts) => ipcRenderer.invoke('server:setup', opts),
-		test:  ()     => ipcRenderer.invoke('server:test'),
+		test:  (opts) => ipcRenderer.invoke('server:test', opts),
 	},
 	
 	// ── Config ───────────────────────────────────────────

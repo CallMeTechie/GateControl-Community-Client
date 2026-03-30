@@ -28,9 +28,15 @@ if (!gotLock) {
 }
 
 // ── Konfiguration ────────────────────────────────────────────
+// Maschinenspezifischer Encryption Key (generiert beim ersten Start)
+const crypto = require('crypto');
+const keyStore = new (require('electron-store'))({ name: 'gatecontrol-keyfile', encryptionKey: 'gc-bootstrap' });
+if (!keyStore.get('machineKey')) {
+	keyStore.set('machineKey', crypto.randomBytes(32).toString('hex'));
+}
 const store = new Store({
 	name: 'gatecontrol-config',
-	encryptionKey: 'gatecontrol-v1',
+	encryptionKey: keyStore.get('machineKey'),
 	schema: {
 		server: {
 			type: 'object',
@@ -88,6 +94,7 @@ let tunnelState = {
 	uptime: 0,
 	connectedSince: null,
 };
+let isReconnecting = false;
 
 // ── Pfade ────────────────────────────────────────────────────
 const RESOURCES_PATH = app.isPackaged
@@ -286,8 +293,13 @@ function showWindow() {
 
 // ── WireGuard Tunnel ─────────────────────────────────────────
 async function connectTunnel() {
+	if (isReconnecting) {
+		log.debug('Reconnect läuft bereits, überspringe connectTunnel');
+		return;
+	}
 	try {
 		log.info('Tunnel-Verbindung wird aufgebaut...');
+		connectionMonitor.stop();
 		updateTray('connecting');
 		broadcastState('connecting');
 
@@ -383,8 +395,11 @@ async function toggleKillSwitch(enabled) {
 
 // ── Reconnect Logic ──────────────────────────────────────────
 async function handleDisconnect() {
+	if (isReconnecting) return;
+	isReconnecting = true;
+
 	log.warn('Verbindungsabbruch erkannt, versuche Reconnect...');
-	
+
 	tunnelState.connected = false;
 	updateTray('connecting');
 	broadcastState('reconnecting');
@@ -404,10 +419,11 @@ async function handleDisconnect() {
 			
 			tunnelState.connected = true;
 			tunnelState.connectedSince = new Date();
+			isReconnecting = false;
 			updateTray('connected');
 			broadcastState('connected');
 			connectionMonitor.start();
-			
+
 			showNotification('Wiederverbunden', 'VPN-Tunnel wurde wiederhergestellt.');
 			log.info('Reconnect erfolgreich');
 			return;
@@ -417,6 +433,7 @@ async function handleDisconnect() {
 	}
 	
 	log.error('Alle Reconnect-Versuche fehlgeschlagen');
+	isReconnecting = false;
 	updateTray('disconnected');
 	broadcastState('error', 'Reconnect fehlgeschlagen. Bitte manuell verbinden.');
 	showNotification('Verbindung verloren', 'Automatischer Reconnect fehlgeschlagen.');
@@ -566,8 +583,21 @@ function registerIpcHandlers() {
 	});
 
 	// Konfiguration
+	// Config mit Allowlist (verhindert Schreiben beliebiger Keys)
+	const CONFIG_WRITABLE_KEYS = new Set([
+		'app.startMinimized', 'app.startWithWindows', 'app.theme',
+		'app.checkInterval', 'app.configPollInterval',
+		'tunnel.autoConnect', 'tunnel.killSwitch',
+		'tunnel.splitTunnel', 'tunnel.splitRoutes',
+	]);
 	ipcMain.handle('config:get', (_, key) => store.get(key));
-	ipcMain.handle('config:set', (_, key, value) => store.set(key, value));
+	ipcMain.handle('config:set', (_, key, value) => {
+		if (!CONFIG_WRITABLE_KEYS.has(key)) {
+			log.warn(`config:set verweigert für Key: ${key}`);
+			return;
+		}
+		store.set(key, value);
+	});
 	ipcMain.handle('config:getAll', () => store.store);
 	
 	// Server-Einstellungen
@@ -591,8 +621,17 @@ function registerIpcHandlers() {
 		}
 	});
 	
-	ipcMain.handle('server:test', async () => {
+	ipcMain.handle('server:test', async (_, { url, apiKey } = {}) => {
 		try {
+			if (url && apiKey) {
+				// Eingegebene Werte testen (nicht gespeicherte)
+				const axios = require('axios');
+				const res = await axios.get(`${url.replace(/\/+$/, '')}/api/v1/client/ping`, {
+					headers: { 'X-API-Token': apiKey },
+					timeout: 10000,
+				});
+				return { success: res.data?.ok === true };
+			}
 			await apiClient.ping();
 			return { success: true };
 		} catch (err) {

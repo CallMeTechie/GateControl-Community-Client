@@ -789,8 +789,10 @@ class WireGuardNative {
       // Padding to ALIGNED(8)
       offset += 4;
 
-      // AllowedIPs überspringen (24 bytes each)
-      offset += allowedIPsCount * WG_ALLOWED_IP_SIZE;
+      // AllowedIPs überspringen (24 bytes each) — mit Bounds-Check
+      const allowedIPsSize = allowedIPsCount * WG_ALLOWED_IP_SIZE;
+      if (offset + allowedIPsSize > buf.length) break;
+      offset += allowedIPsSize;
 
       peers.push({
         publicKey: peerPubKey,
