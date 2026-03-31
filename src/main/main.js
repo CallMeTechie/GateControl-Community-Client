@@ -253,12 +253,13 @@ function createWindow() {
 	const dpi = screen.getPrimaryDisplay().scaleFactor;
 	mainWindow = new BrowserWindow({
 		width: Math.round(590 / dpi),
+		minWidth: Math.round(590 / dpi),
 		maxWidth: Math.round(590 / dpi),
 		height: Math.round(store.get('app.windowHeight', 1280) / dpi),
 		minHeight: Math.round(500 / dpi),
 		resizable: true,
 		frame: false,
-		transparent: true,
+		backgroundColor: store.get('app.theme', 'dark') === 'light' ? '#F8F9FB' : '#0F1117',
 		titleBarStyle: 'hidden',
 		show: false,
 		icon: app.isPackaged
@@ -280,13 +281,8 @@ function createWindow() {
 		}
 	});
 	
-	const fixedWidth = Math.round(590 / dpi);
 	mainWindow.on('resize', () => {
-		const [width, height] = mainWindow.getSize();
-		// Breite erzwingen (transparent: true ignoriert maxWidth auf Windows)
-		if (width !== fixedWidth) {
-			mainWindow.setSize(fixedWidth, height);
-		}
+		const [, height] = mainWindow.getSize();
 		store.set('app.windowHeight', Math.round(height * dpi));
 	});
 
