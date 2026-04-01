@@ -58,6 +58,13 @@
     ],
     "extraResources": [
       {
+        "from": "node_modules/@gatecontrol/client-core/resources/",
+        "to": "resources/",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
         "from": "resources/",
         "to": "resources/",
         "filter": [
