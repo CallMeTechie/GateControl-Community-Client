@@ -36,10 +36,15 @@
           "arch": [
             "x64"
           ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
         }
       ],
-      "icon": "build/icon.ico",
-      "requestedExecutionLevel": "requireAdministrator"
+      "icon": "build/icon.ico"
     },
     "nsis": {
       "oneClick": false,
@@ -50,7 +55,12 @@
       "installerHeaderIcon": "build/icon.ico",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "GateControl"
+      "shortcutName": "GateControl",
+      "requestedExecutionLevel": "requireAdministrator"
+    },
+    "portable": {
+      "artifactName": "${productName} ${version}.exe",
+      "requestedExecutionLevel": "asInvoker"
     },
     "files": [
       "src/**/*",
