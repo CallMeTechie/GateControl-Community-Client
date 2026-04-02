@@ -4,3 +4,4 @@ docs/
 *.log
 *.tar.gz
 .env
+.core/

@@ -132,11 +132,12 @@ jobs:
 
       - name: Clone gatecontrol-client-core (shared dependency)
         if: steps.check_tag.outputs.exists == 'false'
-        uses: actions/checkout@v4
-        with:
-          repository: CallMeTechie/gatecontrol-client-core
-          path: ../gatecontrol-client-core
-          token: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/CallMeTechie/gatecontrol-client-core.git" .core
+          node -e "const p=require('./package.json'); p.dependencies['@gatecontrol/client-core']='file:.core'; require('fs').writeFileSync('package.json',JSON.stringify(p,null,2)+'\n')"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - run: npm ci
         if: steps.check_tag.outputs.exists == 'false'
