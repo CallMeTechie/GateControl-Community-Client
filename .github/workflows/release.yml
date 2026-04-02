@@ -130,6 +130,14 @@ jobs:
           git tag "$TAG"
           git push origin master --tags
 
+      - name: Clone gatecontrol-client-core (shared dependency)
+        if: steps.check_tag.outputs.exists == 'false'
+        uses: actions/checkout@v4
+        with:
+          repository: CallMeTechie/gatecontrol-client-core
+          path: ../gatecontrol-client-core
+          token: ${{ secrets.GITHUB_TOKEN }}
+
       - run: npm ci
         if: steps.check_tag.outputs.exists == 'false'
 
