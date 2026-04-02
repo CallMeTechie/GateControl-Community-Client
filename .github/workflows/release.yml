@@ -139,8 +139,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - run: npm ci
+      - name: Install dependencies
         if: steps.check_tag.outputs.exists == 'false'
+        shell: bash
+        run: npm install --no-audit --no-fund
 
       - name: Build installer
         if: steps.check_tag.outputs.exists == 'false'
