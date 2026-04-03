@@ -19,6 +19,9 @@ const {
   registerBaseHandlers,
 } = require('@gatecontrol/client-core');
 
+const { i18n } = require('@gatecontrol/client-core');
+const { t, setLocale, getLocale, resolveLocale } = i18n;
+
 // ── Logging ──────────────────────────────────────────────────
 const log = createLogger();
 
@@ -114,9 +117,9 @@ function updateTray(state) {
 
 	tray.setImage(getIcon(state));
 
-	const statusText = state === 'connected' ? 'Verbunden'
-		: state === 'connecting' ? 'Verbinde...'
-		: 'Getrennt';
+	const statusText = state === 'connected' ? t('status.connected')
+		: state === 'connecting' ? t('status.connecting')
+		: t('status.disconnected');
 
 	let tooltip = `GateControl – ${statusText}`;
 	if (tunnelState.connected) {
@@ -126,7 +129,8 @@ function updateTray(state) {
 			const dur = Math.floor((Date.now() - new Date(tunnelState.connectedSince).getTime()) / 1000);
 			const h = Math.floor(dur / 3600);
 			const m = Math.floor((dur % 3600) / 60);
-			tooltip += `\nVerbunden seit: ${h > 0 ? h + 'h ' : ''}${m}m`;
+			const duration = `${h > 0 ? h + 'h ' : ''}${m}m`;
+			tooltip += `\n${t('tray.connectedSince', { duration })}`;
 		}
 		const rx = tunnelState.rxBytes || 0;
 		const tx = tunnelState.txBytes || 0;
@@ -142,7 +146,7 @@ function updateTray(state) {
 		},
 		{ type: 'separator' },
 		{
-			label: state === 'connected' ? '⬤ Verbunden' : '○ Getrennt',
+			label: state === 'connected' ? '⬤ ' + t('status.connected') : '○ ' + t('status.disconnected'),
 			enabled: false,
 		},
 		...((store.get('server.url', '') || tunnelState.endpoint) ? [{
@@ -155,23 +159,23 @@ function updateTray(state) {
 		}] : []),
 		{ type: 'separator' },
 		{
-			label: state === 'connected' ? 'Trennen' : 'Verbinden',
+			label: state === 'connected' ? t('action.disconnect') : t('action.connect'),
 			click: () => state === 'connected' ? disconnectTunnel() : connectTunnel(),
 		},
 		{ type: 'separator' },
 		{
-			label: 'Kill-Switch',
+			label: t('killswitch.label'),
 			type: 'checkbox',
 			checked: store.get('tunnel.killSwitch', false),
 			click: (item) => toggleKillSwitch(item.checked),
 		},
 		{ type: 'separator' },
 		{
-			label: 'Fenster öffnen',
+			label: t('tray.openWindow'),
 			click: () => showWindow(),
 		},
 		{
-			label: 'Einstellungen',
+			label: t('tray.settings'),
 			click: () => {
 				showWindow();
 				mainWindow?.webContents.send('navigate', 'settings');
@@ -180,13 +184,13 @@ function updateTray(state) {
 		...(pendingUpdate ? [
 			{ type: 'separator' },
 			{
-				label: `⬆ Update v${pendingUpdate.version} installieren`,
+				label: t('tray.installUpdate', { version: pendingUpdate.version }),
 				click: () => installUpdate(),
 			},
 		] : []),
 		{ type: 'separator' },
 		{
-			label: 'Beenden',
+			label: t('tray.quit'),
 			click: () => quitApp(),
 		},
 	]);
@@ -296,7 +300,7 @@ async function connectTunnel() {
 
 		connectionMonitor.start();
 
-		showNotification('Verbunden', 'GateControl VPN-Tunnel ist aktiv.');
+		showNotification(t('notify.connected'), t('notify.connected'));
 		log.info('Tunnel erfolgreich verbunden');
 
 		checkPeerExpiry();
@@ -305,7 +309,7 @@ async function connectTunnel() {
 		log.error('Tunnel-Verbindung fehlgeschlagen:', err);
 		updateTray('disconnected');
 		broadcastState('error', err.message);
-		showNotification('Verbindungsfehler', err.message);
+		showNotification(t('notify.connectionError'), err.message);
 	}
 }
 
@@ -330,7 +334,7 @@ async function disconnectTunnel() {
 		updateTray('disconnected');
 		broadcastState('disconnected');
 
-		showNotification('Getrennt', 'VPN-Tunnel wurde beendet.');
+		showNotification(t('notify.disconnected'), t('notify.disconnected'));
 		log.info('Tunnel getrennt');
 
 	} catch (err) {
@@ -381,7 +385,7 @@ async function handleDisconnect() {
 			broadcastState('connected');
 			connectionMonitor.start();
 
-			showNotification('Wiederverbunden', 'VPN-Tunnel wurde wiederhergestellt.');
+			showNotification(t('notify.reconnected'), t('notify.reconnected'));
 			log.info('Reconnect erfolgreich');
 			return;
 		} catch (err) {
@@ -392,8 +396,8 @@ async function handleDisconnect() {
 	log.error('Alle Reconnect-Versuche fehlgeschlagen');
 	isReconnecting = false;
 	updateTray('disconnected');
-	broadcastState('error', 'Reconnect fehlgeschlagen. Bitte manuell verbinden.');
-	showNotification('Verbindung verloren', 'Automatischer Reconnect fehlgeschlagen.');
+	broadcastState('error', t('notify.reconnectFailed'));
+	showNotification(t('notify.connectionError'), t('notify.reconnectFailed'));
 }
 
 // ── Notifications ────────────────────────────────────────────
@@ -420,16 +424,16 @@ async function checkPeerExpiry() {
 		const daysLeft = Math.ceil((expiresAt - now) / 86400000);
 
 		if (daysLeft <= 0) {
-			showNotification('Peer abgelaufen', 'Dein VPN-Zugang ist abgelaufen. Kontaktiere den Administrator.');
+			showNotification(t('notify.peerExpiredTitle'), t('notify.peerExpiredBody'));
 			mainWindow?.webContents.send('peer-expiry', { daysLeft: 0, expiresAt: peerInfo.expiresAt });
 		} else if (daysLeft <= 1) {
-			showNotification('Peer läuft heute ab', 'Dein VPN-Zugang läuft in weniger als 24 Stunden ab.');
+			showNotification(t('notify.peerExpiresTodayTitle'), t('notify.peerExpiresTodayBody'));
 			mainWindow?.webContents.send('peer-expiry', { daysLeft, expiresAt: peerInfo.expiresAt });
 		} else if (daysLeft <= 3) {
-			showNotification('Peer läuft bald ab', `Dein VPN-Zugang läuft in ${daysLeft} Tagen ab.`);
+			showNotification(t('notify.peerExpiresSoonTitle'), t('notify.peerExpiresSoonBody', { days: daysLeft }));
 			mainWindow?.webContents.send('peer-expiry', { daysLeft, expiresAt: peerInfo.expiresAt });
 		} else if (daysLeft <= 7) {
-			showNotification('Peer-Ablauf Hinweis', `Dein VPN-Zugang läuft in ${daysLeft} Tagen ab.`);
+			showNotification(t('notify.peerExpiryNotice'), t('notify.peerExpiresSoonBody', { days: daysLeft }));
 			mainWindow?.webContents.send('peer-expiry', { daysLeft, expiresAt: peerInfo.expiresAt });
 		}
 
@@ -443,7 +447,7 @@ async function checkPeerExpiry() {
 
 // ── Auto-Update UI ──────────────────────────────────────────
 function showUpdateNotification(release) {
-	showNotification('Update verfügbar', `Version ${release.version} wurde heruntergeladen.`);
+	showNotification(t('update.available', { version: release.version }), t('update.readyToInstall'));
 	mainWindow?.webContents.send('update-ready', {
 		version: release.version,
 		releaseNotes: release.releaseNotes,
@@ -528,6 +532,13 @@ async function initServices() {
 		wgService,
 		log,
 	});
+
+	const savedLocale = store.get('app.locale');
+	if (savedLocale) {
+		setLocale(savedLocale);
+	} else {
+		setLocale(resolveLocale(app.getLocale()));
+	}
 }
 
 app.whenReady().then(async () => {
@@ -568,6 +579,15 @@ app.whenReady().then(async () => {
 		getTunnelState: () => tunnelState,
 		wgConfigFile: WG_CONFIG_FILE,
 	});
+
+	// Locale IPC Handler
+	ipcMain.handle('locale:set', (_, locale) => {
+		setLocale(locale);
+		store.set('app.locale', getLocale());
+		updateTray(tunnelState.connected ? 'connected' : 'disconnected');
+		mainWindow?.webContents.send('locale:changed', getLocale());
+	});
+	ipcMain.handle('locale:get', () => getLocale());
 
 	// Tray
 	tray = new Tray(getIcon('disconnected'));
