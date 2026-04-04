@@ -146,9 +146,11 @@ function updateMixedContentElements() {
 
 // Locale Init
 locale.get().then(loc => {
+	locale.set(loc);
 	const selectEl = document.querySelector('#locale-select');
 	if (selectEl) selectEl.value = loc;
 	updateDOM();
+	updateUI();
 });
 
 locale.onChange((loc) => {
