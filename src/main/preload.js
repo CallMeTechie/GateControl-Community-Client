@@ -58,7 +58,8 @@ contextBridge.exposeInMainWorld('gatecontrol', {
 
 	// ── Logs ─────────────────────────────────────────────
 	logs: {
-		get: () => ipcRenderer.invoke('logs:get'),
+		get: (opts) => ipcRenderer.invoke('logs:get', opts),
+		export: () => ipcRenderer.invoke('logs:export'),
 	},
 
 	// ── Peer ─────────────────────────────────────────────
