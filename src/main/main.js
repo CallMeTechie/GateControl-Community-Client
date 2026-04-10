@@ -646,11 +646,16 @@ app.whenReady().then(async () => {
 			try {
 				const newConfig = await apiClient.checkConfigUpdate();
 				if (newConfig) {
-					log.info('Neue Konfiguration vom Server erhalten');
-					await wgService.writeConfig(WG_CONFIG_FILE, newConfig);
-					if (tunnelState.connected) {
-						await disconnectTunnel();
-						await connectTunnel();
+					// Validate before applying — reject empty or malformed configs
+					if (!newConfig.includes('[Interface]') || !newConfig.includes('PrivateKey')) {
+						log.warn('Config update rejected: missing [Interface] or PrivateKey');
+					} else {
+						log.info('Neue Konfiguration vom Server erhalten');
+						await wgService.writeConfig(WG_CONFIG_FILE, newConfig);
+						if (tunnelState.connected) {
+							await disconnectTunnel();
+							await connectTunnel();
+						}
 					}
 				}
 			} catch (err) {
