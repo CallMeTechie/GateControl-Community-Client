@@ -12,6 +12,7 @@ const {
   WireGuardService,
   ApiClient,
   KillSwitch,
+  RdpAllow,
   ConnectionMonitor,
   Updater,
   createLogger,
@@ -42,6 +43,7 @@ let mainWindow = null;
 let tray = null;
 let wgService = null;
 let killSwitch = null;
+let rdpAllow = null;
 let apiClient = null;
 let connectionMonitor = null;
 let updater = null;
@@ -382,6 +384,18 @@ async function toggleKillSwitch(enabled) {
 	broadcastState(tunnelState.connected ? 'connected' : 'disconnected');
 }
 
+async function toggleRdpAllow(enabled) {
+	store.set('tunnel.rdpAllow', enabled);
+
+	if (enabled) {
+		await rdpAllow.enable(WG_CONFIG_FILE);
+	} else {
+		await rdpAllow.disable();
+	}
+
+	broadcastState(tunnelState.connected ? 'connected' : 'disconnected');
+}
+
 // ── Reconnect Logic ──────────────────────────────────────────
 async function handleDisconnect() {
 	if (isReconnecting) return;
@@ -518,6 +532,7 @@ function broadcastState(status, error = null) {
 		txSpeed: tunnelState.txSpeed || 0,
 		connectedSince: tunnelState.connectedSince,
 		killSwitch: store.get('tunnel.killSwitch', false),
+		rdpAllow: store.get('tunnel.rdpAllow', false),
 	};
 
 	mainWindow?.webContents.send('tunnel-state', state);
@@ -532,6 +547,7 @@ async function initServices() {
 
 	wgService = new WireGuardService(log, { resourcesPath: RESOURCES_PATH });
 	killSwitch = new KillSwitch(log);
+	rdpAllow = new RdpAllow(log);
 	apiClient = new ApiClient(
 		store.get('server.url', ''),
 		store.get('server.apiKey', ''),
@@ -589,6 +605,20 @@ app.whenReady().then(async () => {
 		log.debug('Kill-Switch Cleanup:', err.message);
 	}
 
+	// RDP Allow Cleanup
+	try {
+		const rdpWasActive = await rdpAllow.isActive();
+		if (rdpWasActive && !store.get('tunnel.rdpAllow', false)) {
+			log.warn('Verwaiste RDP-Allow Regeln gefunden — bereinige...');
+			await rdpAllow.disable();
+		} else if (rdpWasActive) {
+			log.info('RDP Allow war beim letzten Beenden aktiv — Regeln bleiben bestehen');
+			rdpAllow.enabled = true;
+		}
+	} catch (err) {
+		log.debug('RDP Allow Cleanup:', err.message);
+	}
+
 	// IPC Handler registrieren (from core)
 	registerBaseHandlers(ipcMain, {
 		app,
@@ -603,6 +633,7 @@ app.whenReady().then(async () => {
 		connectTunnel,
 		disconnectTunnel,
 		toggleKillSwitch,
+		toggleRdpAllow,
 		installUpdate,
 		getTunnelState: () => tunnelState,
 		wgConfigFile: WG_CONFIG_FILE,
@@ -710,6 +741,13 @@ async function quitApp() {
 		try {
 			await killSwitch.disable();
 			store.set('tunnel.killSwitch', false);
+		} catch {}
+	}
+
+	if (rdpAllow?.enabled) {
+		try {
+			await rdpAllow.disable();
+			store.set('tunnel.rdpAllow', false);
 		} catch {}
 	}
 
