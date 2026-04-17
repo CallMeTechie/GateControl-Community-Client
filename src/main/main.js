@@ -15,6 +15,7 @@ const {
   RdpAllow,
   ConnectionMonitor,
   Updater,
+  DnsPolicy,
   createLogger,
   createStores,
   registerBaseHandlers,
@@ -45,6 +46,7 @@ let wgService = null;
 let killSwitch = null;
 let rdpAllow = null;
 let apiClient = null;
+let dnsPolicy = null;
 let connectionMonitor = null;
 let updater = null;
 let pendingUpdate = null;
@@ -348,6 +350,19 @@ async function connectTunnel() {
 			log.debug('Hostname report skipped:', err.message);
 		}
 
+		// Install NRPT rule for *.gc.internal so Windows routes those
+		// queries to the VPN-internal dnsmasq instead of the default
+		// resolver fan-out (which caches a public-side NXDOMAIN first).
+		try {
+			if (DnsPolicy && !dnsPolicy) dnsPolicy = new DnsPolicy(log);
+			if (dnsPolicy) {
+				dnsPolicy.add('.gc.internal', '10.8.0.1').catch((e) =>
+					log.debug('NRPT install failed:', e && e.message));
+			}
+		} catch (err) {
+			log.debug('NRPT skipped:', err.message);
+		}
+
 		checkPeerExpiry();
 
 	} catch (err) {
@@ -363,6 +378,10 @@ async function disconnectTunnel() {
 		log.info('Tunnel wird getrennt...');
 
 		connectionMonitor.stop();
+
+		if (dnsPolicy) {
+			try { await dnsPolicy.removeAll(); } catch (e) { log.debug('NRPT cleanup:', e.message); }
+		}
 
 		await wgService.disconnect();
 
