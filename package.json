@@ -23,7 +23,6 @@
     "electron-builder": "^26.8.1"
   },
   "overrides": {
-    "axios": "^1.16.1",
     "@xmldom/xmldom": "0.8.13",
     "fast-uri": "3.1.2",
     "ip-address": "10.1.1"
