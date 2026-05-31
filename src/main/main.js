@@ -307,14 +307,29 @@ async function connectTunnel() {
 		const apiKey = store.get('server.apiKey');
 
 		if (serverUrl && apiKey) {
+			let fetchedConfig = null;
 			try {
-				const config = await apiClient.fetchConfig();
-				if (config) {
-					await wgService.writeConfig(WG_CONFIG_FILE, config);
-					log.info('Konfiguration vom Server aktualisiert');
-				}
+				fetchedConfig = await apiClient.fetchConfig();
 			} catch (err) {
 				log.warn('Config-Abruf fehlgeschlagen, nutze lokale Config:', err.message);
+			}
+			if (fetchedConfig) {
+				// Fail-closed: validate before overwriting the existing config.
+				// A bad fetch must NOT clobber a good local config; abort the connect.
+				const validation = validateWgConfig(fetchedConfig);
+				if (!validation.ok) {
+					const msg = 'Invalid WireGuard config: ' + validation.errors.join(', ');
+					log.error('Config-Update abgelehnt, behalte lokale Config: ' + msg);
+					updateTray('disconnected');
+					broadcastState('error', msg);
+					showNotification(t('notify.connectionError'), msg);
+					return;
+				}
+				if (validation.warnings && validation.warnings.length > 0) {
+					log.warn('Config-Warnungen: ' + validation.warnings.join(', '));
+				}
+				await wgService.writeConfig(WG_CONFIG_FILE, fetchedConfig);
+				log.info('Konfiguration vom Server aktualisiert');
 			}
 		}
 
