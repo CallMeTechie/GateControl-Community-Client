@@ -19,6 +19,7 @@ const {
   createLogger,
   createStores,
   registerBaseHandlers,
+  validateWgConfig,
 } = require('@gatecontrol/client-core');
 
 const { i18n } = require('@gatecontrol/client-core');
@@ -720,10 +721,14 @@ app.whenReady().then(async () => {
 			try {
 				const newConfig = await apiClient.checkConfigUpdate();
 				if (newConfig) {
-					// Validate before applying — reject empty or malformed configs
-					if (!newConfig.includes('[Interface]') || !newConfig.includes('PrivateKey')) {
-						log.warn('Config update rejected: missing [Interface] or PrivateKey');
+					// Validate before applying — fail-closed via shared validator.
+					const validation = validateWgConfig(newConfig);
+					if (!validation.ok) {
+						log.warn('Config update rejected: ' + validation.errors.join(', '));
 					} else {
+						if (validation.warnings && validation.warnings.length > 0) {
+							log.warn('Config update warnings: ' + validation.warnings.join(', '));
+						}
 						log.info('Neue Konfiguration vom Server erhalten');
 						await wgService.writeConfig(WG_CONFIG_FILE, newConfig);
 						if (tunnelState.connected) {
