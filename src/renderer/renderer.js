@@ -284,7 +284,7 @@ onPortalUrl?.((url) => {
 });
 
 el.portalBtn?.addEventListener('click', () => {
-	if (currentPortalUrl) shell.openExternal(currentPortalUrl);
+	if (currentPortalUrl && /^https:\/\//i.test(currentPortalUrl)) shell.openExternal(currentPortalUrl);
 });
 
 // ── Kill-Switch Toggle ───────────────────────────────────
