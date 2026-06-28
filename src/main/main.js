@@ -65,6 +65,11 @@ let tunnelState = {
 };
 let isReconnecting = false;
 
+// ── Portal state ─────────────────────────────────────────────
+let portalUrl = null;
+let autoOpenPortal = false;
+let portalOpenedSince = null;
+
 // ── Pfade ────────────────────────────────────────────────────
 const RESOURCES_PATH = app.isPackaged
 	? path.join(process.resourcesPath, 'resources')
@@ -74,6 +79,12 @@ const WG_CONFIG_DIR = path.join(app.getPath('userData'), 'wireguard');
 const WG_CONFIG_FILE = path.join(WG_CONFIG_DIR, 'gatecontrol0.conf');
 
 // ── Helpers ──────────────────────────────────────────────────
+function openPortalSafe() {
+	if (portalUrl && /^https:\/\//i.test(portalUrl)) {
+		require('electron').shell.openExternal(portalUrl).catch(() => {});
+	}
+}
+
 function formatBytesShort(bytes) {
 	if (!bytes || bytes <= 0) return '0 B';
 	const units = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -221,6 +232,13 @@ function updateTray(state) {
 				click: () => installUpdate(),
 			},
 		] : []),
+		...(portalUrl ? [
+			{ type: 'separator' },
+			{
+				label: t('portal.open'),
+				click: () => openPortalSafe(),
+			},
+		] : []),
 		{ type: 'separator' },
 		{
 			label: t('tray.quit'),
@@ -346,6 +364,22 @@ async function connectTunnel() {
 		updateTray('connected');
 		broadcastState('connected');
 
+		// ── Portal auto-open (Task 7) ────────────────────────────
+		async function refreshPortalUrl() {
+			await apiClient.getPermissions();
+			portalUrl = apiClient.portalUrl;
+			autoOpenPortal = apiClient.autoOpenPortal;
+			// ponytail: getPermissions() never throws (catches internally); on failure
+			// apiClient.portalUrl retains its previous value (preserve-last-known).
+			if (!portalUrl) log.warn('portal url fetch returned empty');
+		}
+		await refreshPortalUrl();
+		if (!portalUrl) { await new Promise(r => setTimeout(r, 1500)); await refreshPortalUrl(); }
+		updateTray('connected'); // refresh so portal item appears
+		if (mainWindow) mainWindow.webContents.send('portal-url', portalUrl);
+		const since = tunnelState.connectedSince ? tunnelState.connectedSince.getTime() : Date.now();
+		if (portalUrl && autoOpenPortal && portalOpenedSince !== since) { portalOpenedSince = since; openPortalSafe(); }
+
 		connectionMonitor.start();
 
 		showNotification(t('notify.connected'), t('notify.connected'));
@@ -410,6 +444,10 @@ async function disconnectTunnel() {
 		tunnelState.connectedSince = null;
 		tunnelState.rxBytes = 0;
 		tunnelState.txBytes = 0;
+
+		portalOpenedSince = null;
+		portalUrl = null;
+		if (mainWindow) mainWindow.webContents.send('portal-url', null);
 
 		updateTray('disconnected');
 		broadcastState('disconnected');

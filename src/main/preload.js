@@ -112,6 +112,9 @@ contextBridge.exposeInMainWorld('gatecontrol', {
 		openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
 	},
 
+	// ── Portal ───────────────────────────────────────────
+	onPortalUrl: (cb) => ipcRenderer.on('portal-url', (_e, url) => cb(url)),
+
 	// ── Fenster ──────────────────────────────────────────
 	window: {
 		minimize: () => ipcRenderer.send('window:minimize'),

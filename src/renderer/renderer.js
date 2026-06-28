@@ -3,11 +3,14 @@
  * UI-Logik und State Management
  */
 
-const { tunnel, server, config, killSwitch, rdpAllow, autostart, logs, update, services, traffic, dns, shell, peer, permissions, getVersion, window: win, locale } = window.gatecontrol;
+const { tunnel, server, config, killSwitch, rdpAllow, autostart, logs, update, services, traffic, dns, shell, peer, permissions, onPortalUrl, getVersion, window: win, locale } = window.gatecontrol;
 const { t } = window.gatecontrol.i18n;
 
 // Aktive Berechtigungen (werden beim Connect geladen)
 let activePermissions = { services: true, traffic: true, dns: true };
+
+// Portal URL (pushed from main on connect/disconnect)
+let currentPortalUrl = null;
 
 // Version anzeigen
 getVersion().then(v => {
@@ -38,6 +41,7 @@ const el = {
 	statusIcon:   $('#status-icon'),
 	statusLabel:  $('#status-label'),
 	connectBtn:   $('#connect-btn'),
+	portalBtn:    $('#portal-btn'),
 	statEndpoint: $('#stat-endpoint'),
 	statHandshake: $('#stat-handshake'),
 	statRx:       $('#stat-rx'),
@@ -252,17 +256,35 @@ function updateUI() {
 
 	// RDP Allow
 	el.rdpAllowToggle.checked = state.rdpAllow || false;
+
+	// Portal button visibility
+	togglePortalBtn();
 }
 
 // ── Connect Button ───────────────────────────────────────
 el.connectBtn.addEventListener('click', async () => {
 	if (state.status === 'connecting') return;
-	
+
 	if (state.connected) {
 		await tunnel.disconnect();
 	} else {
 		await tunnel.connect();
 	}
+});
+
+// ── Portal Button ────────────────────────────────────────
+function togglePortalBtn() {
+	const show = !!(currentPortalUrl && state.connected);
+	el.portalBtn?.toggleAttribute('hidden', !show);
+}
+
+onPortalUrl?.((url) => {
+	currentPortalUrl = url;
+	togglePortalBtn();
+});
+
+el.portalBtn?.addEventListener('click', () => {
+	if (currentPortalUrl) shell.openExternal(currentPortalUrl);
 });
 
 // ── Kill-Switch Toggle ───────────────────────────────────
