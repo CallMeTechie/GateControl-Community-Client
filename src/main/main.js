@@ -366,14 +366,12 @@ async function connectTunnel() {
 
 		// ── Portal auto-open (Task 7) ────────────────────────────
 		async function refreshPortalUrl() {
-			try {
-				await apiClient.getPermissions();
-				portalUrl = apiClient.portalUrl;
-				autoOpenPortal = apiClient.autoOpenPortal;
-			} catch (e) {
-				log.warn(`portal url fetch failed: ${e.message}`);
-				portalUrl = portalUrl || null;
-			}
+			await apiClient.getPermissions();
+			portalUrl = apiClient.portalUrl;
+			autoOpenPortal = apiClient.autoOpenPortal;
+			// ponytail: getPermissions() never throws (catches internally); on failure
+			// apiClient.portalUrl retains its previous value (preserve-last-known).
+			if (!portalUrl) log.warn('portal url fetch returned empty');
 		}
 		await refreshPortalUrl();
 		if (!portalUrl) { await new Promise(r => setTimeout(r, 1500)); await refreshPortalUrl(); }
