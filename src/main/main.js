@@ -8,6 +8,9 @@
 const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, dialog, Notification, screen } = require('electron');
 const path = require('path');
 
+// Pure tunnel/portal decision logic (unit-tested in test/tunnel-logic.test.js).
+const { reconnectDelay, shouldOpenPortal } = require('./tunnel-logic');
+
 const {
   WireGuardService,
   ApiClient,
@@ -378,7 +381,7 @@ async function connectTunnel() {
 		updateTray('connected'); // refresh so portal item appears
 		if (mainWindow) mainWindow.webContents.send('portal-url', portalUrl);
 		const since = tunnelState.connectedSince ? tunnelState.connectedSince.getTime() : Date.now();
-		if (portalUrl && autoOpenPortal && portalOpenedSince !== since) { portalOpenedSince = since; openPortalSafe(); }
+		if (shouldOpenPortal({ portalUrl, autoOpenPortal, connectedSince: since, lastOpenedSince: portalOpenedSince })) { portalOpenedSince = since; openPortalSafe(); }
 
 		connectionMonitor.start();
 
@@ -496,10 +499,9 @@ async function handleDisconnect() {
 	broadcastState('reconnecting');
 
 	const maxRetries = 10;
-	const baseDelay = 2000;
 
 	for (let i = 0; i < maxRetries; i++) {
-		const delay = Math.min(baseDelay * Math.pow(1.5, i), 60000);
+		const delay = reconnectDelay(i);
 		log.info(`Reconnect-Versuch ${i + 1}/${maxRetries} in ${delay}ms...`);
 
 		await new Promise(r => setTimeout(r, delay));
