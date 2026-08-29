@@ -1,16 +1,10 @@
 version: 2
 updates:
-  - package-ecosystem: "npm"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-    open-pull-requests-limit: 10
-    labels:
-      - "dependencies"
-    reviewers:
-      - "CallMeTechie"
-
+  # npm intentionally disabled: @gatecontrol/client-core is a file: dependency
+  # ("file:../gatecontrol-client-core") that Dependabot cannot resolve in its
+  # sandbox (path-based fetch aborts). Core library deps are managed in the
+  # gatecontrol-client-core repo. Dependabot *security* updates hit the same
+  # wall and stay disabled at repo level until the file: dep is replaced.
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
@@ -19,3 +13,9 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - "ci"
+    groups:
+      github-actions:
+        update-types:
+          - "minor"
+          - "patch"
+          - "major"
