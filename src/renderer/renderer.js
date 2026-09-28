@@ -355,7 +355,7 @@ $('#btn-save-server').addEventListener('click', async () => {
 
 	const result = await server.setup({ url, apiKey: key });
 	if (result.success) {
-		showServerStatus(t('server.registered', { peerId: result.peerId }), 'success');
+		showServerStatus(t(result.enrolled ? 'server.enrolled' : 'server.registered', { peerId: result.peerId }), 'success');
 	} else {
 		showServerStatus(t('server.testError', { error: result.error }), 'error');
 	}
@@ -438,6 +438,15 @@ async function scanQR() {
 				width: canvas.width,
 				height: canvas.height,
 			});
+			
+			// Setup QR ("App einrichten"): core asked the user and redeemed it —
+			// stop scanning either way, or the next frame would ask again.
+			if (result.enrollment) {
+				stopQRScan();
+				if (result.success) showServerStatus(t('server.enrolled', { peerId: result.peerId }), 'success');
+				else if (!result.cancelled) showServerStatus(result.error, 'error');
+				return;
+			}
 			
 			if (result.success) {
 				stopQRScan();
