@@ -32,9 +32,12 @@ const { t, setLocale, getLocale, resolveLocale } = i18n;
 const log = createLogger();
 
 // ── Single Instance Lock ─────────────────────────────────────
+// app.quit() is asynchronous — without exiting here the second instance
+// would go on to create stores, services and IPC handlers.
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
-	app.quit();
+	app.exit(0);
+	process.exit(0);
 }
 
 // ── Store ────────────────────────────────────────────────────
@@ -607,10 +610,11 @@ async function installUpdate() {
 		await disconnectTunnel();
 	}
 
-	if (store.get('tunnel.killSwitch', false)) {
+	// Lift the firewall rules for the installer, but keep the user's
+	// kill-switch preference — the new version re-enables it on connect.
+	if (killSwitch?.enabled) {
 		try {
 			await killSwitch.disable();
-			store.set('tunnel.killSwitch', false);
 		} catch {}
 	}
 
@@ -730,6 +734,14 @@ app.whenReady().then(async () => {
 		log.debug('RDP Allow Cleanup:', err.message);
 	}
 
+	// Updater before the IPC handlers: update:check and the post-setup
+	// updater.configure() need it (started further below).
+	updater = new Updater({
+		serverUrl: store.get('server.url', ''),
+		apiKey: store.get('server.apiKey', ''),
+		log,
+	});
+
 	// IPC Handler registrieren (from core)
 	registerBaseHandlers(ipcMain, {
 		app,
@@ -739,7 +751,7 @@ app.whenReady().then(async () => {
 		wgService,
 		apiClient,
 		killSwitch,
-		updater,
+		getUpdater: () => updater,
 		log,
 		connectTunnel,
 		disconnectTunnel,
@@ -818,11 +830,6 @@ app.whenReady().then(async () => {
 	}
 
 	// Auto-Update
-	updater = new Updater({
-		serverUrl: store.get('server.url', ''),
-		apiKey: store.get('server.apiKey', ''),
-		log,
-	});
 	updater.start((release) => {
 		pendingUpdate = release;
 		log.info(`Update bereit: v${release.version}`);
@@ -859,10 +866,11 @@ async function quitApp() {
 		await disconnectTunnel();
 	}
 
+	// Remove the firewall rules for this session only; the kill-switch
+	// preference stays on and is applied again on the next connect.
 	if (killSwitch?.enabled) {
 		try {
 			await killSwitch.disable();
-			store.set('tunnel.killSwitch', false);
 		} catch {}
 	}
 
