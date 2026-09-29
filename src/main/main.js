@@ -5,7 +5,7 @@
  * All business logic lives in the core package.
  */
 
-const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, dialog, Notification, screen } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, dialog, Notification, screen, nativeTheme } = require('electron');
 const path = require('path');
 
 // Pure tunnel/portal decision logic (unit-tested in test/tunnel-logic.test.js).
@@ -254,16 +254,27 @@ function updateTray(state) {
 
 // ── Fenster ──────────────────────────────────────────────────
 function createWindow() {
-	const dpi = screen.getPrimaryDisplay().scaleFactor;
+	// Sidebar layout (redesign): default 1040×720 DIP, resizable down to a
+	// compact icon-rail layout at 760×560. Size is remembered in DIP.
+	const DEFAULT_SIZE = { width: 1040, height: 720 };
+	const MIN_SIZE = { width: 760, height: 560 };
+	const saved = store.get('app.windowSize', null);
+	const work = screen.getPrimaryDisplay().workAreaSize;
+	const clamp = (v, min, max) => Math.max(min, Math.min(max, Math.round(v)));
+	const width = clamp(saved?.width || DEFAULT_SIZE.width, MIN_SIZE.width, Math.max(MIN_SIZE.width, work.width));
+	const height = clamp(saved?.height || DEFAULT_SIZE.height, MIN_SIZE.height, Math.max(MIN_SIZE.height, work.height));
+
+	const themeSetting = store.get('app.theme', 'dark');
+	const isLight = themeSetting === 'light' || (themeSetting === 'system' && !nativeTheme.shouldUseDarkColors);
+
 	mainWindow = new BrowserWindow({
-		width: Math.round(590 / dpi),
-		minWidth: Math.round(590 / dpi),
-		maxWidth: Math.round(590 / dpi),
-		height: Math.round(store.get('app.windowHeight', 1280) / dpi),
-		minHeight: Math.round(500 / dpi),
+		width,
+		height,
+		minWidth: MIN_SIZE.width,
+		minHeight: MIN_SIZE.height,
 		resizable: true,
 		frame: false,
-		backgroundColor: store.get('app.theme', 'dark') === 'light' ? '#F8F9FB' : '#0F1117',
+		backgroundColor: isLight ? '#F3F5F8' : '#0D1015',
 		titleBarStyle: 'hidden',
 		show: false,
 		icon: app.isPackaged
@@ -286,8 +297,9 @@ function createWindow() {
 	});
 
 	mainWindow.on('resize', () => {
-		const [, height] = mainWindow.getSize();
-		store.set('app.windowHeight', Math.round(height * dpi));
+		if (mainWindow.isMaximized() || mainWindow.isFullScreen()) return;
+		const [w, h] = mainWindow.getSize();
+		store.set('app.windowSize', { width: w, height: h });
 	});
 
 	mainWindow.on('close', (e) => {
@@ -736,6 +748,13 @@ app.whenReady().then(async () => {
 		installUpdate,
 		getTunnelState: () => tunnelState,
 		wgConfigFile: WG_CONFIG_FILE,
+	});
+
+	// Fenster maximieren/wiederherstellen (eigene Titelleiste)
+	ipcMain.on('window:toggle-maximize', () => {
+		if (!mainWindow) return;
+		if (mainWindow.isMaximized()) mainWindow.unmaximize();
+		else mainWindow.maximize();
 	});
 
 	// Locale IPC Handler

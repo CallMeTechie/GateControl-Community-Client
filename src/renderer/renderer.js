@@ -12,44 +12,46 @@ let activePermissions = { services: true, traffic: true, dns: true };
 // Portal URL (pushed from main on connect/disconnect)
 let currentPortalUrl = null;
 
-// Version anzeigen
-getVersion().then(v => {
-	const el = document.getElementById('app-version');
-	if (el) el.textContent = `v${v}`;
-});
-
-// Theme laden
-config.get('app.theme').then(theme => {
-	applyTheme(theme || 'dark');
-});
-
-function applyTheme(theme) {
-	document.documentElement.setAttribute('data-theme', theme);
-	document.querySelectorAll('.theme-btn').forEach(btn => {
-		btn.classList.toggle('active', btn.dataset.theme === theme);
-	});
-}
-
 // ── DOM-Elemente ─────────────────────────────────────────
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
 
 const el = {
 	// Status
-	ringFill:     $('#ring-fill'),
-	ringContainer: $('#ring-container'),
-	statusIcon:   $('#status-icon'),
+	hero:         $('#hero'),
 	statusLabel:  $('#status-label'),
+	heroSub:      $('#hero-sub'),
+	heroError:    $('#hero-error'),
+	heroProgress: $('#hero-progress'),
+	heroTip:      $('#hero-tip'),
+	heroLogBtn:   $('#hero-log-btn'),
 	connectBtn:   $('#connect-btn'),
 	portalBtn:    $('#portal-btn'),
 	statEndpoint: $('#stat-endpoint'),
 	statHandshake: $('#stat-handshake'),
+	statUptime:   $('#stat-uptime'),
 	statRx:       $('#stat-rx'),
 	statTx:       $('#stat-tx'),
 	statRxSpeed:  $('#stat-rx-speed'),
 	statTxSpeed:  $('#stat-tx-speed'),
 	killswitchToggle: $('#killswitch-toggle'),
+	killswitchQuick:  $('#killswitch-quick'),
+	ksChip:       $('#ks-chip'),
+	routingBtn:   $('#routing-btn'),
 	rdpAllowToggle: $('#rdp-allow-toggle'),
+
+	// Seitenleiste & Statusleiste
+	sideDot:      $('#side-dot'),
+	sideLabel:    $('#side-conn-label'),
+	sideSub:      $('#side-conn-sub'),
+	sideToggle:   $('#side-conn-toggle'),
+	sideServer:   $('#side-server'),
+	sbDot:        $('#sb-dot'),
+	sbLabel:      $('#sb-label'),
+	sbEndpoint:   $('#sb-endpoint'),
+	sbKs:         $('#sb-ks'),
+	sbRate:       $('#sb-rate'),
+	overviewSub:  $('#overview-sub'),
 
 	// Settings
 	serverUrl:    $('#server-url'),
@@ -63,9 +65,12 @@ const el = {
 	optSplitTunnel: $('#opt-split-tunnel'),
 	optSplitRoutes: $('#opt-split-routes'),
 	splitRoutesSection: $('#split-routes-section'),
-	
+
 	// Logs
 	logOutput:    $('#log-output'),
+	logEmpty:     $('#log-empty'),
+	logCount:     $('#log-count'),
+	logSearch:    $('#log-search'),
 };
 
 // ── State ────────────────────────────────────────────────
@@ -73,6 +78,75 @@ let state = {
 	status: 'disconnected',
 	connected: false,
 };
+
+// Gespeicherte Werte, die mehrere Ansichten brauchen
+const view = {
+	serverUrl: '',
+	splitTunnel: false,
+	splitRoutes: '',
+	autoConnect: true,
+	dnsState: 'idle', // idle | busy | pass | fail | error
+	dnsServers: [],
+	servicesList: [],
+	trafficData: null,
+	usagePeriod: 'last7d',
+	logLines: [],
+	version: '',
+};
+
+// ── Version ──────────────────────────────────────────────
+getVersion().then(v => {
+	view.version = v;
+	const vEl = document.getElementById('app-version');
+	if (vEl) vEl.textContent = `v${v}`;
+	renderAboutVersion();
+});
+
+function renderAboutVersion() {
+	const about = $('#about-version');
+	if (about && view.version) about.textContent = t('ui.settings.version', { version: view.version });
+}
+
+// ── Theme ────────────────────────────────────────────────
+// Gespeicherte Werte: 'dark' | 'light' | 'system' (System folgt prefers-color-scheme)
+let themeMode = 'dark';
+const systemDark = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+
+function resolveTheme(mode) {
+	if (mode === 'system') return systemDark && !systemDark.matches ? 'light' : 'dark';
+	return mode === 'light' ? 'light' : 'dark';
+}
+
+function applyTheme(mode) {
+	themeMode = ['dark', 'light', 'system'].includes(mode) ? mode : 'dark';
+	const resolved = resolveTheme(themeMode);
+	document.documentElement.setAttribute('data-theme', resolved);
+	document.querySelectorAll('.theme-btn').forEach(btn => {
+		btn.classList.toggle('active', btn.dataset.theme === themeMode);
+		btn.setAttribute('aria-pressed', btn.dataset.theme === themeMode ? 'true' : 'false');
+	});
+	const themeBtn = $('#btn-theme');
+	if (themeBtn) {
+		const label = t(resolved === 'light' ? 'ui.titlebar.themeDark' : 'ui.titlebar.themeLight');
+		themeBtn.title = label;
+		themeBtn.setAttribute('aria-label', label);
+	}
+	redrawBandwidthGraph();
+}
+
+systemDark?.addEventListener?.('change', () => {
+	if (themeMode === 'system') applyTheme('system');
+});
+
+config.get('app.theme').then(theme => {
+	applyTheme(theme || 'dark');
+});
+
+$('#btn-theme').addEventListener('click', () => {
+	const next = resolveTheme(themeMode) === 'light' ? 'dark' : 'light';
+	applyTheme(next);
+	config.set('app.theme', next);
+});
 
 // ── Navigation ───────────────────────────────────────────
 $$('.nav-btn').forEach(btn => {
@@ -83,70 +157,70 @@ $$('.nav-btn').forEach(btn => {
 });
 
 function navigateTo(page) {
-	$$('.nav-btn').forEach(b => b.classList.remove('active'));
-	$(`.nav-btn[data-page="${page}"]`)?.classList.add('active');
-	
+	if (!$(`#page-${page}`)) page = 'status';
+	$$('.nav-btn').forEach(b => {
+		const on = b.dataset.page === page;
+		b.classList.toggle('active', on);
+		if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
+	});
+
 	$$('.page').forEach(p => p.classList.remove('active'));
 	$(`#page-${page}`)?.classList.add('active');
-	
+	$('#pages').scrollTop = 0;
+
 	// Logs laden wenn Tab gewechselt
 	if (page === 'logs') refreshLogs();
+	if (page === 'status') redrawBandwidthGraph();
 }
 
 // Navigation aus dem Main Process
 window.gatecontrol.onNavigate((page) => navigateTo(page));
 
-// ── i18n / DOM Update ────────────────────────────────────
-function updateDOM() {
-	document.querySelectorAll('[data-i18n]').forEach(el => {
-		el.textContent = t(el.dataset.i18n);
+$('#services-all-btn').addEventListener('click', () => navigateTo('services'));
+el.heroLogBtn.addEventListener('click', () => navigateTo('logs'));
+el.routingBtn.addEventListener('click', () => {
+	navigateTo('settings');
+	selectSettingsTab('split');
+});
+
+// Einstellungs-Unterseiten
+$$('.set-tab').forEach(btn => {
+	btn.addEventListener('click', () => selectSettingsTab(btn.dataset.tab));
+});
+
+function selectSettingsTab(tab) {
+	$$('.set-tab').forEach(b => {
+		const on = b.dataset.tab === tab;
+		b.classList.toggle('on', on);
+		if (on) b.setAttribute('aria-current', 'true'); else b.removeAttribute('aria-current');
 	});
-	document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
-		el.placeholder = t(el.dataset.i18nPlaceholder);
-	});
-	document.querySelectorAll('[data-i18n-title]').forEach(el => {
-		el.title = t(el.dataset.i18nTitle);
-	});
-	document.documentElement.lang = window.gatecontrol.i18n.getLocale();
-	updateMixedContentElements();
+	$$('.set-panel').forEach(p => p.classList.toggle('active', p.id === `set-${tab}`));
+	const body = $('.settings-body');
+	if (body) body.scrollTop = 0;
 }
 
-function updateMixedContentElements() {
-	// DNS test button (SVG + text)
-	const dnsTestBtn = document.querySelector('#dns-test-btn');
-	if (dnsTestBtn && !dnsTestBtn.disabled) {
-		const svg = dnsTestBtn.querySelector('svg');
-		if (svg) {
-			const svgClone = svg.cloneNode(true);
-			dnsTestBtn.textContent = '';
-			dnsTestBtn.appendChild(svgClone);
-			dnsTestBtn.appendChild(document.createTextNode('\n' + t('dns.testBtn')));
-		}
-	}
-
-	// Import file button
-	const importFileBtn = document.querySelector('#btn-import-file');
-	if (importFileBtn) {
-		const svg = importFileBtn.querySelector('svg');
-		if (svg) {
-			const svgClone = svg.cloneNode(true);
-			importFileBtn.textContent = '';
-			importFileBtn.appendChild(svgClone);
-			importFileBtn.appendChild(document.createTextNode('\n' + t('action.importFile')));
-		}
-	}
-
-	// Import QR button
-	const importQrBtn = document.querySelector('#btn-import-qr');
-	if (importQrBtn) {
-		const svg = importQrBtn.querySelector('svg');
-		if (svg) {
-			const svgClone = svg.cloneNode(true);
-			importQrBtn.textContent = '';
-			importQrBtn.appendChild(svgClone);
-			importQrBtn.appendChild(document.createTextNode('\n' + t('action.scanQr')));
-		}
-	}
+// ── i18n / DOM Update ────────────────────────────────────
+function updateDOM() {
+	document.querySelectorAll('[data-i18n]').forEach(node => {
+		node.textContent = t(node.dataset.i18n);
+	});
+	document.querySelectorAll('[data-i18n-placeholder]').forEach(node => {
+		node.placeholder = t(node.dataset.i18nPlaceholder);
+	});
+	document.querySelectorAll('[data-i18n-title]').forEach(node => {
+		node.title = t(node.dataset.i18nTitle);
+	});
+	document.querySelectorAll('[data-i18n-aria]').forEach(node => {
+		node.setAttribute('aria-label', t(node.dataset.i18nAria));
+	});
+	document.documentElement.lang = window.gatecontrol.i18n.getLocale();
+	applyTheme(themeMode);
+	renderAboutVersion();
+	renderDns();
+	renderRouting();
+	renderServices();
+	renderTraffic();
+	renderLogs();
 }
 
 // Locale Init
@@ -162,6 +236,7 @@ locale.onChange((loc) => {
 	const selectEl = document.querySelector('#locale-select');
 	if (selectEl) selectEl.value = loc;
 	updateDOM();
+	updateUI();
 });
 
 const localeSelect = document.querySelector('#locale-select');
@@ -173,11 +248,17 @@ if (localeSelect) {
 
 // ── Titlebar ─────────────────────────────────────────────
 $('#btn-minimize').addEventListener('click', () => win.minimize());
+$('#btn-maximize').addEventListener('click', () => win.toggleMaximize?.());
 $('#btn-close').addEventListener('click', () => win.close());
 
 // ── Tunnel State Updates ─────────────────────────────────
 tunnel.onState((newState) => {
 	state = { ...state, ...newState };
+	if (isConnected() && activePermissions.traffic) {
+		pushBandwidthSample(state.rxSpeed || 0, state.txSpeed || 0);
+	} else if (!isConnected()) {
+		resetBandwidthGraph();
+	}
 	updateUI();
 });
 
@@ -193,76 +274,150 @@ tunnel.getStatus().then(async (s) => {
 	}
 });
 
+function isConnected() {
+	return !!(state.connected || state.status === 'connected');
+}
+
+function uiState() {
+	if (isConnected()) return 'on';
+	if (state.status === 'connecting' || state.status === 'reconnecting') return 'connecting';
+	if (state.status === 'error') return 'error';
+	return 'off';
+}
+
 // ── UI Update ────────────────────────────────────────────
+const STATE_COLORS = { on: 'var(--acc)', off: 'var(--faint)', connecting: 'var(--warn)', error: 'var(--err)' };
+const STATE_HALOS = { on: 'var(--acc-bg)', off: 'transparent', connecting: 'var(--warn-bg)', error: 'var(--err-bg)' };
+
 function updateUI() {
-	const { status, connected, endpoint, handshake, rxBytes, txBytes, rxSpeed, txSpeed, killSwitch: ks } = state;
-	
-	// Ring
-	el.ringFill.classList.remove('connected', 'connecting');
-	el.statusIcon.classList.remove('connected', 'connecting');
-	
-	if (connected || status === 'connected') {
-		el.ringFill.classList.add('connected');
-		el.statusIcon.classList.add('connected');
-		el.statusIcon.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`;
-		el.statusLabel.textContent = t('status.connected');
-		el.statusLabel.style.color = 'var(--accent)';
+	const { status, endpoint, handshake, rxBytes, txBytes, rxSpeed, txSpeed, killSwitch: ks } = state;
+	const ui = uiState();
+	const connected = ui === 'on';
+	const host = hostOf(view.serverUrl) || hostOf(endpoint) || '';
 
-		el.connectBtn.classList.add('connected');
-		el.connectBtn.classList.remove('connecting');
-		el.connectBtn.querySelector('.connect-btn-text').textContent = t('action.disconnect');
-		
-	} else if (status === 'connecting' || status === 'reconnecting') {
-		el.ringFill.classList.add('connecting');
-		el.statusIcon.classList.add('connecting');
-		el.statusIcon.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>`;
+	// Hero
+	el.hero.dataset.state = ui;
+	const btnText = el.connectBtn.querySelector('.connect-btn-text');
+	el.connectBtn.classList.toggle('connected', connected);
+	el.connectBtn.classList.toggle('connecting', ui === 'connecting');
+	el.heroProgress.hidden = ui !== 'connecting';
+	el.heroLogBtn.hidden = ui !== 'error';
+	el.heroTip.hidden = !(ui === 'off' && !view.autoConnect);
+	el.heroError.hidden = ui !== 'error' || !state.error;
+
+	if (ui === 'on') {
+		el.statusLabel.textContent = t('ui.hero.on');
+		el.heroSub.textContent = host ? t('ui.hero.subOn', { host }) : t('ui.hero.subOnNoHost');
+		btnText.textContent = t('action.disconnect');
+	} else if (ui === 'connecting') {
 		el.statusLabel.textContent = status === 'reconnecting' ? t('status.reconnecting') : t('status.connecting');
-		el.statusLabel.style.color = 'var(--warn)';
-		
-		el.connectBtn.classList.remove('connected');
-		el.connectBtn.classList.add('connecting');
-		
+		el.heroSub.textContent = t('ui.hero.subConnecting');
+	} else if (ui === 'error') {
+		el.statusLabel.textContent = t('ui.hero.error');
+		el.heroSub.textContent = t('ui.hero.subError');
+		btnText.textContent = t('ui.hero.retry');
+		el.heroError.textContent = '';
+		if (state.error) {
+			const strong = document.createElement('strong');
+			strong.textContent = t('notify.connectionError') + '. ';
+			el.heroError.appendChild(strong);
+			el.heroError.appendChild(document.createTextNode(String(state.error)));
+		}
 	} else {
-		el.statusIcon.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64A9 9 0 015.64 18.36M5.64 5.64A9 9 0 0118.36 18.36"/></svg>`;
-		el.statusLabel.textContent = t('status.disconnected');
-		el.statusLabel.style.color = 'var(--text-3)';
-
-		el.connectBtn.classList.remove('connected', 'connecting');
-		el.connectBtn.querySelector('.connect-btn-text').textContent = t('action.connect');
+		el.statusLabel.textContent = t('ui.hero.off');
+		el.heroSub.textContent = ks ? t('ui.hero.subOffKs') : t('ui.hero.subOff');
+		btnText.textContent = t('action.connect');
 	}
-	
+
+	// Seitenleiste
+	const label = ui === 'on' ? t('status.connected')
+		: ui === 'connecting' ? (status === 'reconnecting' ? t('status.reconnecting') : t('status.connecting'))
+		: ui === 'error' ? t('ui.conn.error')
+		: t('status.disconnected');
+	el.sideLabel.textContent = label;
+	el.sideDot.style.background = STATE_COLORS[ui];
+	el.sideDot.style.boxShadow = `0 0 0 4px ${STATE_HALOS[ui]}`;
+	el.sideDot.classList.toggle('pulse', ui === 'connecting');
+	el.sideToggle.classList.toggle('on', ui === 'on');
+	el.sideToggle.classList.toggle('busy', ui === 'connecting');
+	el.sideToggle.setAttribute('aria-pressed', ui === 'on' ? 'true' : 'false');
+	el.sideToggle.disabled = ui === 'connecting';
+	updateSideSub();
+
 	// Stats
 	el.statEndpoint.textContent = endpoint || '—';
 	el.statHandshake.textContent = handshake || '—';
 	el.statRx.textContent = formatBytes(rxBytes || 0);
 	el.statTx.textContent = formatBytes(txBytes || 0);
+	updateUptime();
 
 	// Speed + Graph (nur wenn traffic-Berechtigung)
-	if (connected && activePermissions.traffic && (rxSpeed || txSpeed)) {
-		el.statRxSpeed.textContent = formatSpeed(rxSpeed || 0);
-		el.statTxSpeed.textContent = formatSpeed(txSpeed || 0);
-		updateBandwidthGraph(rxSpeed || 0, txSpeed || 0);
-	} else {
-		el.statRxSpeed.textContent = '';
-		el.statTxSpeed.textContent = '';
-	}
+	const showRates = connected && activePermissions.traffic;
+	el.statRxSpeed.textContent = showRates ? (formatSpeed(rxSpeed || 0) || '0 B/s') : '—';
+	el.statTxSpeed.textContent = showRates ? (formatSpeed(txSpeed || 0) || '0 B/s') : '—';
 
-	// Bandwidth graph visibility
+	// Durchsatz-Karte: nur mit traffic-Berechtigung; Platzhalter solange nicht verbunden
 	const bwSection = $('#bandwidth-section');
-	if (bwSection) bwSection.style.display = (connected && activePermissions.traffic) ? '' : 'none';
+	if (bwSection) bwSection.hidden = connected && !activePermissions.traffic;
+	$('#bandwidth-chart').hidden = !showRates;
+	$('#bandwidth-empty').hidden = showRates;
+	if (showRates) redrawBandwidthGraph();
 
 	// Kill-Switch
 	el.killswitchToggle.checked = ks || false;
+	el.killswitchQuick.checked = ks || false;
+	el.ksChip.className = `chip chip-icon ${ks ? 'c-ok' : 'c-warn'}`;
 
 	// RDP Allow
 	el.rdpAllowToggle.checked = state.rdpAllow || false;
+
+	// Statusleiste
+	el.sbDot.style.background = STATE_COLORS[ui];
+	el.sbLabel.textContent = label;
+	el.sbEndpoint.textContent = connected ? host : '';
+	el.sbKs.textContent = ks ? t('ui.statusbar.ksOn') : t('ui.statusbar.ksOff');
+	el.sbRate.textContent = showRates
+		? `↓ ${formatSpeed(rxSpeed || 0) || '0 B/s'}  ↑ ${formatSpeed(txSpeed || 0) || '0 B/s'}`
+		: '';
+
+	// Dienste: nur mit aktivem Tunnel öffnen
+	renderServices();
 
 	// Portal button visibility
 	togglePortalBtn();
 }
 
+function updateSideSub() {
+	const ui = uiState();
+	const host = hostOf(view.serverUrl) || hostOf(state.endpoint) || '';
+	let sub;
+	if (ui === 'on') sub = formatDuration(state.connectedSince) || host;
+	else if (ui === 'error') sub = state.error || host;
+	else sub = host || t('ui.conn.notConfigured');
+	el.sideSub.textContent = sub || '—';
+	el.sideSub.title = sub || '';
+}
+
+function updateUptime() {
+	el.statUptime.textContent = isConnected() ? (formatDuration(state.connectedSince) || '—') : '—';
+}
+
+// Laufzeit sekündlich aktualisieren
+setInterval(() => {
+	if (!isConnected()) return;
+	updateUptime();
+	updateSideSub();
+}, 1000);
+
+function renderOverviewHeader() {
+	const host = hostOf(view.serverUrl);
+	el.overviewSub.textContent = host ? t('ui.overview.sub', { host }) : t('ui.overview.subNone');
+	el.sideServer.textContent = host || '—';
+	el.sideServer.title = view.serverUrl || '';
+}
+
 // ── Connect Button ───────────────────────────────────────
-el.connectBtn.addEventListener('click', async () => {
+async function toggleConnection() {
 	if (state.status === 'connecting') return;
 
 	if (state.connected) {
@@ -270,7 +425,11 @@ el.connectBtn.addEventListener('click', async () => {
 	} else {
 		await tunnel.connect();
 	}
-});
+}
+
+el.connectBtn.addEventListener('click', toggleConnection);
+el.sideToggle.addEventListener('click', toggleConnection);
+$('#services-connect-btn').addEventListener('click', toggleConnection);
 
 // ── Portal Button ────────────────────────────────────────
 function togglePortalBtn() {
@@ -288,9 +447,14 @@ el.portalBtn?.addEventListener('click', () => {
 });
 
 // ── Kill-Switch Toggle ───────────────────────────────────
-el.killswitchToggle.addEventListener('change', (e) => {
-	killSwitch.toggle(e.target.checked);
-});
+function onKillSwitchChange(e) {
+	const on = e.target.checked;
+	state = { ...state, killSwitch: on };
+	updateUI();
+	killSwitch.toggle(on);
+}
+el.killswitchToggle.addEventListener('change', onKillSwitchChange);
+el.killswitchQuick.addEventListener('change', onKillSwitchChange);
 
 // ── RDP Allow Toggle ─────────────────────────────────────
 el.rdpAllowToggle.addEventListener('change', (e) => {
@@ -311,7 +475,15 @@ config.getAll().then(cfg => {
 	el.optPollInterval.value = cfg.app?.configPollInterval ?? 300;
 	el.optSplitTunnel.checked = cfg.tunnel?.splitTunnel ?? false;
 	el.optSplitRoutes.value = cfg.tunnel?.splitRoutes || '';
-	el.splitRoutesSection.style.display = el.optSplitTunnel.checked ? '' : 'none';
+
+	view.serverUrl = cfg.server?.url || '';
+	view.autoConnect = el.optAutoconnect.checked;
+	view.splitTunnel = el.optSplitTunnel.checked;
+	view.splitRoutes = el.optSplitRoutes.value;
+	renderSplitMode();
+	renderRouting();
+	renderOverviewHeader();
+	updateUI();
 });
 
 // API-Key anzeigen/verbergen
@@ -355,6 +527,9 @@ $('#btn-save-server').addEventListener('click', async () => {
 
 	const result = await server.setup({ url, apiKey: key });
 	if (result.success) {
+		view.serverUrl = url;
+		renderOverviewHeader();
+		updateSideSub();
 		showServerStatus(t(result.enrolled ? 'server.enrolled' : 'server.registered', { peerId: result.peerId }), 'success');
 	} else {
 		showServerStatus(t('server.testError', { error: result.error }), 'error');
@@ -365,7 +540,7 @@ function showServerStatus(message, type) {
 	el.serverStatus.hidden = false;
 	el.serverStatus.textContent = message;
 	el.serverStatus.className = `field-status ${type}`;
-	
+
 	if (type === 'success') {
 		setTimeout(() => { el.serverStatus.hidden = true; }, 5000);
 	}
@@ -387,7 +562,7 @@ let qrStream = null;
 $('#btn-import-qr').addEventListener('click', async () => {
 	const preview = $('#qr-preview');
 	const video = $('#qr-video');
-	
+
 	try {
 		qrStream = await navigator.mediaDevices.getUserMedia({
 			video: { facingMode: 'environment' }
@@ -423,22 +598,22 @@ async function scanQR() {
 	const video = $('#qr-video');
 	const canvas = $('#qr-canvas');
 	const ctx = canvas.getContext('2d');
-	
+
 	const scan = async () => {
 		if (!qrStream) return;
-		
+
 		if (video.readyState === video.HAVE_ENOUGH_DATA) {
 			canvas.width = video.videoWidth;
 			canvas.height = video.videoHeight;
 			ctx.drawImage(video, 0, 0);
-			
+
 			const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 			const result = await config.importQR({
 				data: Array.from(imageData.data),
 				width: canvas.width,
 				height: canvas.height,
 			});
-			
+
 			// Setup QR ("App einrichten"): core asked the user and redeemed it —
 			// stop scanning either way, or the next frame would ask again.
 			if (result.enrollment) {
@@ -447,17 +622,17 @@ async function scanQR() {
 				else if (!result.cancelled) showServerStatus(result.error, 'error');
 				return;
 			}
-			
+
 			if (result.success) {
 				stopQRScan();
 				showServerStatus(t('server.qrSuccess'), 'success');
 				return;
 			}
 		}
-		
+
 		requestAnimationFrame(scan);
 	};
-	
+
 	scan();
 }
 
@@ -473,6 +648,8 @@ el.optMinimized.addEventListener('change', (e) => {
 
 el.optAutoconnect.addEventListener('change', (e) => {
 	config.set('tunnel.autoConnect', e.target.checked);
+	view.autoConnect = e.target.checked;
+	updateUI();
 });
 
 el.optCheckInterval.addEventListener('change', (e) => {
@@ -497,9 +674,38 @@ document.querySelectorAll('.theme-btn').forEach(btn => {
 });
 
 // ── Split-Tunneling ─────────────────────────────────────
+function renderSplitMode() {
+	const on = el.optSplitTunnel.checked;
+	$$('.opt[data-split]').forEach(opt => {
+		opt.setAttribute('aria-pressed', (opt.dataset.split === 'on') === on ? 'true' : 'false');
+	});
+	el.splitRoutesSection.hidden = !on;
+}
+
+function renderRouting() {
+	if (!el.routingBtn) return;
+	if (view.splitTunnel) {
+		const count = (view.splitRoutes || '').split('\n').filter(l => l.trim()).length;
+		el.routingBtn.textContent = t('ui.protection.routingSplit', { count });
+	} else {
+		el.routingBtn.textContent = t('ui.protection.routingFull');
+	}
+}
+
+$$('.opt[data-split]').forEach(opt => {
+	opt.addEventListener('click', () => {
+		const want = opt.dataset.split === 'on';
+		if (el.optSplitTunnel.checked === want) return;
+		el.optSplitTunnel.checked = want;
+		el.optSplitTunnel.dispatchEvent(new Event('change'));
+	});
+});
+
 el.optSplitTunnel.addEventListener('change', async (e) => {
 	config.set('tunnel.splitTunnel', e.target.checked);
-	el.splitRoutesSection.style.display = e.target.checked ? '' : 'none';
+	view.splitTunnel = e.target.checked;
+	renderSplitMode();
+	renderRouting();
 
 	// Wenn verbunden: Reconnect anbieten
 	if (state.connected) {
@@ -514,6 +720,8 @@ el.optSplitTunnel.addEventListener('change', async (e) => {
 $('#btn-save-split').addEventListener('click', async () => {
 	const routes = el.optSplitRoutes.value.trim();
 	config.set('tunnel.splitRoutes', routes);
+	view.splitRoutes = routes;
+	renderRouting();
 
 	if (!routes) {
 		showSplitStatus(t('split.noRoutes'), 'warn');
@@ -532,27 +740,96 @@ $('#btn-save-split').addEventListener('click', async () => {
 	}
 });
 
+let splitStatusTimer = null;
 function showSplitStatus(msg, type) {
-	const el = $('#split-status');
-	if (!el) return;
-	el.style.display = '';
-	el.textContent = msg;
-	el.style.color = type === 'warn' ? 'var(--warn, #F59E0B)' : 'var(--accent)';
-	el.style.background = type === 'warn' ? 'rgba(245,158,11,0.1)' : 'rgba(34,197,94,0.1)';
-	setTimeout(() => { el.style.display = 'none'; }, 5000);
+	const node = $('#split-status');
+	if (!node) return;
+	node.hidden = false;
+	node.textContent = msg;
+	node.className = `inline-status ${type === 'warn' ? 'warn' : 'success'}`;
+	clearTimeout(splitStatusTimer);
+	splitStatusTimer = setTimeout(() => { node.hidden = true; }, 5000);
 }
 
 // ── Logs ─────────────────────────────────────────────────
 let logPeriod = 'all';
+let logLevel = 'all';
+
+const LOG_LINE = /^\[([^\]]+)\]\s*\[(\w+)\]\s*(.*)$/;
+const LOG_LEVELS = {
+	error: { key: 'ui.logs.levelError', cls: 'c-err', group: 'error' },
+	warn: { key: 'ui.logs.levelWarn', cls: 'c-warn', group: 'warn' },
+	info: { key: 'ui.logs.levelInfo', cls: 'c-info', group: 'info' },
+};
+
+function parseLogLine(line) {
+	const m = line.match(LOG_LINE);
+	if (!m) return { time: '', level: '', msg: line };
+	return { time: m[1], level: m[2].toLowerCase(), msg: m[3] };
+}
 
 async function refreshLogs() {
-	el.logOutput.textContent = t('logs.loading');
+	el.logOutput.textContent = '';
+	el.logEmpty.hidden = false;
+	el.logEmpty.textContent = t('logs.loading');
+	el.logCount.textContent = '';
 	const logText = await logs.get({ period: logPeriod });
-	el.logOutput.textContent = logText || t('logs.empty');
-	el.logOutput.scrollTop = 0; // newest on top
+	view.logLines = (logText || '').split('\n').filter(l => l.trim()).map(parseLogLine);
+	renderLogs();
+	const card = $('.log-card');
+	if (card) card.scrollTop = 0; // newest on top
+}
+
+function renderLogs() {
+	if (!el.logOutput || !$('#page-logs').classList.contains('active')) return;
+	const query = (el.logSearch.value || '').trim().toLowerCase();
+	const rows = view.logLines.filter(r => {
+		if (logLevel !== 'all') {
+			const group = r.level === 'warning' ? 'warn' : r.level;
+			if (group !== logLevel) return false;
+		}
+		return !query || r.msg.toLowerCase().includes(query) || r.time.toLowerCase().includes(query);
+	});
+
+	const frag = document.createDocumentFragment();
+	for (const r of rows) {
+		const row = document.createElement('div');
+		row.className = 'log-row';
+		const time = document.createElement('span');
+		time.className = 'log-time';
+		time.textContent = r.time;
+		const lvl = document.createElement('span');
+		lvl.className = 'log-level';
+		if (r.level) {
+			const info = LOG_LEVELS[r.level === 'warning' ? 'warn' : r.level];
+			const chip = document.createElement('span');
+			chip.className = `chip ${info ? info.cls : ''}`;
+			chip.textContent = info ? t(info.key) : r.level;
+			lvl.appendChild(chip);
+		}
+		const msg = document.createElement('span');
+		msg.className = 'log-msg';
+		msg.textContent = r.msg;
+		row.append(time, lvl, msg);
+		frag.appendChild(row);
+	}
+	el.logOutput.textContent = '';
+	el.logOutput.appendChild(frag);
+
+	el.logCount.textContent = t('ui.logs.count', { count: rows.length });
+	if (view.logLines.length === 0) {
+		el.logEmpty.hidden = false;
+		el.logEmpty.textContent = t('logs.empty');
+	} else if (rows.length === 0) {
+		el.logEmpty.hidden = false;
+		el.logEmpty.textContent = t('ui.logs.noMatch');
+	} else {
+		el.logEmpty.hidden = true;
+	}
 }
 
 $('#btn-refresh-logs').addEventListener('click', refreshLogs);
+el.logSearch.addEventListener('input', renderLogs);
 
 // Log period filter
 const logPeriodFilter = $('#log-period-filter');
@@ -561,9 +838,20 @@ if (logPeriodFilter) {
 		const btn = e.target.closest('[data-period]');
 		if (!btn) return;
 		logPeriod = btn.dataset.period;
-		logPeriodFilter.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
-		btn.classList.add('active');
+		logPeriodFilter.querySelectorAll('button').forEach(b => b.classList.toggle('on', b === btn));
 		refreshLogs();
+	});
+}
+
+// Log level filter (clientseitig)
+const logLevelFilter = $('#log-level-filter');
+if (logLevelFilter) {
+	logLevelFilter.addEventListener('click', (e) => {
+		const btn = e.target.closest('[data-level]');
+		if (!btn) return;
+		logLevel = btn.dataset.level;
+		logLevelFilter.querySelectorAll('button').forEach(b => b.classList.toggle('on', b === btn));
+		renderLogs();
 	});
 }
 
@@ -592,26 +880,58 @@ function formatSpeed(bytesPerSec) {
 	return `${(bytesPerSec / 1048576).toFixed(1)} MB/s`;
 }
 
+function formatDuration(since) {
+	if (!since) return '';
+	const start = new Date(since).getTime();
+	if (!Number.isFinite(start)) return '';
+	const secs = Math.max(0, Math.floor((Date.now() - start) / 1000));
+	const h = Math.floor(secs / 3600);
+	const m = Math.floor(secs / 60) % 60;
+	const s = secs % 60;
+	return [h, m, s].map(x => String(x).padStart(2, '0')).join(':');
+}
+
+function hostOf(url) {
+	if (!url || typeof url !== 'string') return '';
+	try {
+		return new URL(/^[a-z]+:\/\//i.test(url) ? url : `https://${url}`).host;
+	} catch {
+		return url;
+	}
+}
+
+function cssVar(name) {
+	return getComputedStyle($('#app-root')).getPropertyValue(name).trim();
+}
+
 // ── Bandwidth Graph (Canvas) ─────────────────────────────
-const BW_HISTORY_LEN = 60; // 60 Datenpunkte (~5 min bei 5s Intervall)
+const BW_HISTORY_LEN = 60; // 60 Datenpunkte (ein Punkt pro Statistik-Update)
 const bwHistory = { rx: [], tx: [] };
 
-function updateBandwidthGraph(rxSpeed, txSpeed) {
+function pushBandwidthSample(rxSpeed, txSpeed) {
 	bwHistory.rx.push(rxSpeed);
 	bwHistory.tx.push(txSpeed);
 	if (bwHistory.rx.length > BW_HISTORY_LEN) bwHistory.rx.shift();
 	if (bwHistory.tx.length > BW_HISTORY_LEN) bwHistory.tx.shift();
+}
 
+function resetBandwidthGraph() {
+	bwHistory.rx.length = 0;
+	bwHistory.tx.length = 0;
+}
+
+function redrawBandwidthGraph() {
 	const canvas = document.getElementById('bandwidth-canvas');
-	if (!canvas) return;
+	if (!canvas || canvas.offsetParent === null) return;
 
 	const ctx = canvas.getContext('2d');
 	const dpr = window.devicePixelRatio || 1;
 	const w = canvas.clientWidth;
 	const h = canvas.clientHeight;
+	if (!w || !h) return;
 
-	const newW = w * dpr;
-	const newH = h * dpr;
+	const newW = Math.round(w * dpr);
+	const newH = Math.round(h * dpr);
 	if (canvas.width !== newW || canvas.height !== newH) {
 		canvas.width = newW;
 		canvas.height = newH;
@@ -621,67 +941,56 @@ function updateBandwidthGraph(rxSpeed, txSpeed) {
 
 	const allValues = [...bwHistory.rx, ...bwHistory.tx];
 	const maxVal = Math.max(...allValues, 1024); // min 1 KB/s scale
+	const maxLabel = $('#chart-max');
+	if (maxLabel) maxLabel.textContent = formatSpeed(maxVal);
 
 	// Grid lines
-	const isLight = document.documentElement.getAttribute('data-theme') === 'light';
-	ctx.strokeStyle = isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.05)';
+	ctx.strokeStyle = cssVar('--line');
 	ctx.lineWidth = 1;
 	for (let i = 1; i < 4; i++) {
-		const y = (h / 4) * i;
+		const y = Math.round((h / 4) * i) + 0.5;
 		ctx.beginPath();
 		ctx.moveTo(0, y);
 		ctx.lineTo(w, y);
 		ctx.stroke();
 	}
 
-	// Scale label
-	ctx.fillStyle = isLight ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.2)';
-	ctx.font = '9px monospace';
-	ctx.fillText(formatSpeed(maxVal), 2, 10);
+	const step = w / (BW_HISTORY_LEN - 1);
+	const yOf = (v) => h - (v / maxVal) * (h - 16);
+	const xOf = (len, i) => (BW_HISTORY_LEN - len + i) * step;
 
-	// Draw line
-	function drawLine(data, color) {
+	function drawLine(data, color, fill, dashed) {
 		if (data.length < 2) return;
-		const step = w / (BW_HISTORY_LEN - 1);
 
-		// Fill area
-		ctx.beginPath();
-		ctx.moveTo(0, h);
-		for (let i = 0; i < data.length; i++) {
-			const x = (BW_HISTORY_LEN - data.length + i) * step;
-			const y = h - (data[i] / maxVal) * (h - 12);
-			ctx.lineTo(x, y);
+		if (fill) {
+			ctx.beginPath();
+			ctx.moveTo(xOf(data.length, 0), h);
+			for (let i = 0; i < data.length; i++) ctx.lineTo(xOf(data.length, i), yOf(data[i]));
+			ctx.lineTo(xOf(data.length, data.length - 1), h);
+			ctx.closePath();
+			ctx.fillStyle = fill;
+			ctx.fill();
 		}
-		ctx.lineTo((BW_HISTORY_LEN - 1) * step, h);
-		ctx.closePath();
-		ctx.fillStyle = color.replace('1)', '0.1)');
-		ctx.fill();
 
-		// Stroke line
 		ctx.beginPath();
 		for (let i = 0; i < data.length; i++) {
-			const x = (BW_HISTORY_LEN - data.length + i) * step;
-			const y = h - (data[i] / maxVal) * (h - 12);
+			const x = xOf(data.length, i);
+			const y = yOf(data[i]);
 			i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
 		}
+		ctx.setLineDash(dashed ? [5, 4] : []);
 		ctx.strokeStyle = color;
-		ctx.lineWidth = 1.5;
+		ctx.lineWidth = 2;
+		ctx.lineJoin = 'round';
 		ctx.stroke();
+		ctx.setLineDash([]);
 	}
 
-	drawLine(bwHistory.rx, 'rgba(34, 197, 94, 1)');  // grün = download
-	drawLine(bwHistory.tx, 'rgba(59, 130, 246, 1)');  // blau = upload
-
-	// Legend
-	ctx.fillStyle = 'rgba(34, 197, 94, 0.8)';
-	ctx.fillRect(w - 90, 4, 8, 8);
-	ctx.fillStyle = 'rgba(59, 130, 246, 0.8)';
-	ctx.fillRect(w - 90, 16, 8, 8);
-	ctx.fillStyle = isLight ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.4)';
-	ctx.font = '9px sans-serif';
-	ctx.fillText('↓ Download', w - 78, 12);
-	ctx.fillText('↑ Upload', w - 78, 24);
+	drawLine(bwHistory.rx, cssVar('--acc-t'), cssVar('--acc-bg'), false); // Download
+	drawLine(bwHistory.tx, cssVar('--info'), null, true);                 // Upload
 }
+
+window.addEventListener('resize', () => redrawBandwidthGraph());
 
 // Stats werden via IPC tunnel.onState gepusht (kein separater Poll nötig)
 
@@ -690,34 +999,65 @@ function showUpdateBanner(info) {
 	const existing = $('#update-banner');
 	if (existing) existing.remove();
 
-	const banner = document.createElement('div');
-	banner.id = 'update-banner';
-	banner.style.cssText = 'position:fixed;bottom:0;left:0;right:0;padding:12px 16px;background:var(--bg-3);border-top:1px solid var(--accent);display:flex;align-items:center;gap:12px;z-index:100';
+	const card = document.createElement('div');
+	card.id = 'update-banner';
+	card.className = 'card update-card';
+	card.setAttribute('role', 'status');
 
-	const text = document.createElement('div');
-	text.style.cssText = 'flex:1;font-size:12px;color:var(--text-1)';
-	const strong = document.createElement('strong');
-	strong.textContent = t('update.available', { version: info.version });
-	text.appendChild(strong);
-	text.appendChild(document.createTextNode(' ' + t('update.readyToInstall')));
-	banner.appendChild(text);
+	const head = document.createElement('div');
+	head.className = 'update-card-head';
+	head.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"></path></svg>';
+	const title = document.createElement('span');
+	title.textContent = t('update.available', { version: info.version });
+	head.appendChild(title);
+	card.appendChild(head);
 
-	const laterBtn = document.createElement('button');
-	laterBtn.textContent = t('update.later');
-	laterBtn.style.cssText = 'padding:6px 12px;font-size:11px;background:transparent;color:var(--text-3);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer';
-	laterBtn.addEventListener('click', () => banner.remove());
-	banner.appendChild(laterBtn);
+	const text = document.createElement('p');
+	text.textContent = t('update.readyToInstall');
+	card.appendChild(text);
+
+	const actions = document.createElement('div');
+	actions.className = 'update-card-actions';
 
 	const installBtn = document.createElement('button');
+	installBtn.type = 'button';
+	installBtn.className = 'btn btn-sec btn-sm';
 	installBtn.textContent = t('update.install');
-	installBtn.style.cssText = 'padding:6px 12px;font-size:11px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:600';
 	installBtn.addEventListener('click', () => update.install());
-	banner.appendChild(installBtn);
+	actions.appendChild(installBtn);
 
-	document.body.appendChild(banner);
+	const laterBtn = document.createElement('button');
+	laterBtn.type = 'button';
+	laterBtn.className = 'btn btn-ghost btn-sm';
+	laterBtn.textContent = t('update.later');
+	laterBtn.addEventListener('click', () => card.remove());
+	actions.appendChild(laterBtn);
+
+	card.appendChild(actions);
+	$('#update-slot').appendChild(card);
 }
 
 update.onReady((info) => showUpdateBanner(info));
+
+// Über → Nach Updates suchen
+$('#btn-check-update').addEventListener('click', async () => {
+	const btn = $('#btn-check-update');
+	const result = $('#update-check-result');
+	btn.disabled = true;
+	result.textContent = t('ui.settings.checking');
+	try {
+		const info = await update.check();
+		if (info) {
+			result.textContent = t('update.available', { version: info.version });
+			showUpdateBanner(info);
+		} else {
+			result.textContent = t('update.noUpdate');
+		}
+	} catch {
+		result.textContent = t('update.noUpdate');
+	}
+	btn.disabled = false;
+});
 
 // ── Peer-Ablauf-Warnung ─────────────────────────────────
 peer.onExpiry((info) => {
@@ -726,24 +1066,37 @@ peer.onExpiry((info) => {
 
 	const banner = document.createElement('div');
 	banner.id = 'expiry-banner';
+	banner.setAttribute('role', 'status');
 
-	let msg, color;
+	let msg, kind;
 	if (info.daysLeft <= 0) {
 		msg = t('peer.expired');
-		color = 'var(--error)';
+		kind = 'err';
 	} else if (info.daysLeft <= 1) {
 		msg = t('peer.expiresToday');
-		color = 'var(--error)';
+		kind = 'err';
 	} else {
 		msg = t('peer.expiresInDays', { days: info.daysLeft });
-		color = info.daysLeft <= 3 ? 'var(--warn, #F59E0B)' : 'var(--text-2)';
+		kind = info.daysLeft <= 3 ? 'warn' : 'info';
 	}
 
-	banner.style.cssText = `padding:8px 12px;margin-top:8px;border-radius:var(--radius);font-size:11px;text-align:center;border:1px solid ${color};color:${color};background:rgba(0,0,0,0.2)`;
-	banner.textContent = msg;
+	banner.className = `notice notice-${kind}`;
+	banner.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"></path><path d="M12 9v4M12 17h.01"></path></svg>';
+	const text = document.createElement('strong');
+	text.className = 'grow';
+	text.textContent = msg;
+	banner.appendChild(text);
 
-	const statsGrid = $('#stats-grid');
-	if (statsGrid) statsGrid.parentNode.insertBefore(banner, statsGrid.nextSibling);
+	const close = document.createElement('button');
+	close.type = 'button';
+	close.className = 'btn btn-ghost btn-icon';
+	close.style.cssText = 'width:30px;height:30px';
+	close.setAttribute('aria-label', t('update.later'));
+	close.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg>';
+	close.addEventListener('click', () => banner.remove());
+	banner.appendChild(close);
+
+	$('#expiry-slot').appendChild(banner);
 });
 update.check().then((info) => { if (info) showUpdateBanner(info); });
 
@@ -758,73 +1111,142 @@ async function loadPermissions() {
 }
 
 function applyPermissions() {
-	const servicesSection = $('#services-section');
 	const trafficSection = $('#traffic-usage');
-	const bandwidthSection = $('#bandwidth-section');
 	const dnsSection = document.querySelector('.dns-section');
 
 	// Services
 	if (activePermissions.services) {
 		loadServices();
-	} else if (servicesSection) {
-		servicesSection.style.display = 'none';
+	} else {
+		view.servicesList = [];
+		renderServices();
 	}
 
 	// Traffic + Bandbreiten-Graph
 	if (activePermissions.traffic) {
 		loadTraffic();
 	} else {
-		if (trafficSection) trafficSection.style.display = 'none';
-		if (bandwidthSection) bandwidthSection.style.display = 'none';
+		view.trafficData = null;
+		if (trafficSection) trafficSection.hidden = true;
 	}
 
 	// DNS-Leak-Test
-	if (!activePermissions.dns && dnsSection) {
-		dnsSection.style.display = 'none';
-	} else if (dnsSection) {
-		dnsSection.style.display = '';
-	}
+	if (dnsSection) dnsSection.hidden = !activePermissions.dns;
+
+	updateUI();
 }
 
 async function loadServices() {
 	const list = await services.list();
+	view.servicesList = Array.isArray(list) ? list : [];
+	renderServices();
+}
+
+function serviceInitial(svc) {
+	const name = String(svc.name || svc.domain || '?').trim();
+	return (name[0] || '?').toUpperCase();
+}
+
+function openService(svc) {
+	if (svc.url) shell.openExternal(svc.url);
+}
+
+function renderServices() {
+	const list = view.servicesList || [];
+	const connected = isConnected();
+
+	// Übersicht: Schnellzugriff (max. 4)
 	const section = $('#services-section');
-	const container = $('#services-list');
-	if (!list || list.length === 0) {
-		section.style.display = 'none';
-		return;
+	const quick = $('#services-list');
+	if (section && quick) {
+		section.hidden = list.length === 0;
+		quick.textContent = '';
+		list.slice(0, 4).forEach((svc) => {
+			const tile = document.createElement('button');
+			tile.type = 'button';
+			tile.className = 'service-tile service-item';
+			tile.disabled = !connected;
+			tile.title = svc.url || '';
+			tile.addEventListener('click', () => openService(svc));
+
+			const initial = document.createElement('span');
+			initial.className = 'service-initial';
+			initial.textContent = serviceInitial(svc);
+
+			const text = document.createElement('span');
+			text.className = 'service-text';
+			const name = document.createElement('span');
+			name.className = 'service-name';
+			name.textContent = svc.name;
+			const domain = document.createElement('span');
+			domain.className = 'service-domain';
+			domain.textContent = svc.domain;
+			text.append(name, domain);
+
+			tile.append(initial, text);
+			quick.appendChild(tile);
+		});
 	}
 
-	section.style.display = '';
-	container.textContent = '';
+	// Dienste-Seite
+	const grid = $('#services-page-list');
+	if (grid) {
+		grid.textContent = '';
+		list.forEach((svc) => {
+			const card = document.createElement('div');
+			card.className = 'card service-card';
 
-	list.forEach((svc) => {
-		const item = document.createElement('div');
-		item.className = 'service-item';
-		item.addEventListener('click', () => shell.openExternal(svc.url));
+			const head = document.createElement('div');
+			head.className = 'service-card-head';
+			const initial = document.createElement('span');
+			initial.className = 'service-initial';
+			initial.textContent = serviceInitial(svc);
+			const text = document.createElement('div');
+			text.className = 'service-text grow';
+			const name = document.createElement('div');
+			name.className = 'service-name';
+			name.textContent = svc.name;
+			const domain = document.createElement('div');
+			domain.className = 'service-domain';
+			domain.textContent = svc.domain;
+			text.append(name, domain);
+			head.append(initial, text);
 
-		const left = document.createElement('div');
-		const name = document.createElement('div');
-		name.className = 'service-name';
-		name.textContent = svc.name;
-		left.appendChild(name);
+			const foot = document.createElement('div');
+			foot.className = 'service-card-foot';
+			if (svc.hasAuth) {
+				const badge = document.createElement('span');
+				badge.className = 'chip c-info service-auth';
+				badge.textContent = t('ui.services.auth');
+				foot.appendChild(badge);
+			}
+			const spacer = document.createElement('span');
+			spacer.className = 'grow';
+			foot.appendChild(spacer);
+			const open = document.createElement('button');
+			open.type = 'button';
+			open.className = 'btn btn-sec btn-sm';
+			open.disabled = !connected;
+			open.textContent = t('ui.services.open');
+			open.insertAdjacentHTML('beforeend', '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path></svg>');
+			open.addEventListener('click', () => openService(svc));
+			foot.appendChild(open);
 
-		const domain = document.createElement('div');
-		domain.className = 'service-domain';
-		domain.textContent = svc.domain;
-		left.appendChild(domain);
+			card.append(head, foot);
+			grid.appendChild(card);
+		});
+	}
 
-		item.appendChild(left);
+	const offline = $('#services-offline');
+	if (offline) offline.hidden = connected;
+	const empty = $('#services-empty');
+	if (empty) empty.hidden = list.length > 0 || !connected;
 
-		if (svc.hasAuth) {
-			const badge = document.createElement('span');
-			badge.className = 'service-auth';
-			badge.textContent = 'Auth';
-			item.appendChild(badge);
-		}
-
-		container.appendChild(item);
-	});
+	const count = $('#services-count');
+	if (count) {
+		count.hidden = list.length === 0;
+		count.textContent = String(list.length);
+	}
 }
 
 // Permissions, Dienste und Traffic laden wenn verbunden
@@ -842,89 +1264,91 @@ tunnel.onState(async (s) => {
 // ── Traffic-Verbrauch ───────────────────────────────────
 async function loadTraffic() {
 	const data = await traffic.stats();
-	const section = $('#traffic-usage');
-	const grid = $('#traffic-grid');
-	if (!data || !section || !grid) return;
-
-	section.style.display = '';
-	grid.textContent = '';
-
-	const periods = [
-		{ label: t('stats.period24h'), data: data.last24h },
-		{ label: t('stats.period7d'), data: data.last7d },
-		{ label: t('stats.period30d'), data: data.last30d },
-		{ label: t('stats.periodTotal'), data: data.total },
-	];
-
-	for (const p of periods) {
-		const card = document.createElement('div');
-		card.className = 'traffic-card';
-
-		const label = document.createElement('div');
-		label.className = 'traffic-card-label';
-		label.textContent = p.label;
-		card.appendChild(label);
-
-		const rx = document.createElement('div');
-		rx.className = 'traffic-card-rx';
-		rx.textContent = `↓ ${formatBytes(p.data?.rx || 0)}`;
-		card.appendChild(rx);
-
-		const tx = document.createElement('div');
-		tx.className = 'traffic-card-tx';
-		tx.textContent = `↑ ${formatBytes(p.data?.tx || 0)}`;
-		card.appendChild(tx);
-
-		grid.appendChild(card);
-	}
+	if (!data) return;
+	view.trafficData = data;
+	renderTraffic();
 }
+
+function renderTraffic() {
+	const section = $('#traffic-usage');
+	const data = view.trafficData;
+	if (!section) return;
+	if (!data) { section.hidden = true; return; }
+	section.hidden = false;
+
+	const p = data[view.usagePeriod] || {};
+	const rx = p.rx || 0;
+	const tx = p.tx || 0;
+	const total = rx + tx;
+	$('#usage-total').textContent = formatBytes(total);
+	$('#usage-rx').textContent = formatBytes(rx);
+	$('#usage-tx').textContent = formatBytes(tx);
+	const rxPct = total > 0 ? Math.round((rx / total) * 100) : 0;
+	$('#usage-bar-rx').style.width = `${rxPct}%`;
+	$('#usage-bar-tx').style.width = `${total > 0 ? 100 - rxPct : 0}%`;
+
+	$$('#usage-period [data-usage]').forEach(b => {
+		const on = b.dataset.usage === view.usagePeriod;
+		b.classList.toggle('on', on);
+		b.setAttribute('aria-selected', on ? 'true' : 'false');
+	});
+}
+
+$('#usage-period').addEventListener('click', (e) => {
+	const btn = e.target.closest('[data-usage]');
+	if (!btn) return;
+	view.usagePeriod = btn.dataset.usage;
+	renderTraffic();
+});
 
 // ── DNS-Leak-Test ───────────────────────────────────────
 const dnsBtn = $('#dns-test-btn');
 const dnsResult = $('#dns-result');
 
+function renderDns() {
+	const label = $('#dns-test-label');
+	const text = $('#dns-text');
+	if (!label || !text) return;
+	const s = view.dnsState;
+	label.textContent = s === 'busy' ? t('dns.testing') : t('ui.protection.dnsRun');
+	dnsResult.className = `dns-result ${s}`;
+	text.textContent = '';
+	const servers = (view.dnsServers || []).join(', ');
+	if (s === 'pass' || s === 'fail') {
+		const title = document.createElement('strong');
+		title.textContent = t(s === 'pass' ? 'dns.noLeak' : 'dns.leak');
+		text.appendChild(title);
+		text.appendChild(document.createTextNode(' · ' + t(s === 'pass' ? 'dns.noLeakDetail' : 'dns.leakDetail', { servers })));
+	} else if (s === 'error') {
+		dnsResult.className = 'dns-result fail';
+		text.textContent = t('dns.testFailed');
+	} else if (s === 'busy') {
+		text.textContent = t('dns.testing');
+	} else {
+		text.textContent = t('ui.protection.dnsIdle');
+	}
+}
+
 if (dnsBtn) {
 	dnsBtn.addEventListener('click', async () => {
 		dnsBtn.disabled = true;
-		dnsBtn.textContent = t('dns.testing');
-		dnsResult.style.display = 'none';
+		view.dnsState = 'busy';
+		renderDns();
 
 		try {
 			const result = await dns.leakTest();
-
-			dnsResult.style.display = '';
-			dnsResult.textContent = '';
-
-			if (result.passed) {
-				dnsResult.className = 'dns-result pass';
-				const title = document.createElement('div');
-				title.style.fontWeight = '600';
-				title.textContent = t('dns.noLeak');
-				dnsResult.appendChild(title);
-
-				const detail = document.createElement('div');
-				detail.style.marginTop = '4px';
-				detail.textContent = t('dns.noLeakDetail', { servers: (result.dnsServers || []).join(', ') });
-				dnsResult.appendChild(detail);
-			} else {
-				dnsResult.className = 'dns-result fail';
-				const title = document.createElement('div');
-				title.style.fontWeight = '600';
-				title.textContent = t('dns.leak');
-				dnsResult.appendChild(title);
-
-				const detail = document.createElement('div');
-				detail.style.marginTop = '4px';
-				detail.textContent = t('dns.leakDetail', { servers: (result.dnsServers || []).join(', ') });
-				dnsResult.appendChild(detail);
-			}
+			view.dnsServers = result.dnsServers || [];
+			view.dnsState = result.passed ? 'pass' : 'fail';
 		} catch {
-			dnsResult.style.display = '';
-			dnsResult.className = 'dns-result fail';
-			dnsResult.textContent = t('dns.testFailed');
+			view.dnsState = 'error';
 		}
 
 		dnsBtn.disabled = false;
-		updateMixedContentElements();
+		renderDns();
 	});
 }
+
+renderDns();
+renderRouting();
+renderServices();
+renderOverviewHeader();

@@ -1,1 +1,112 @@
-{}
+{
+  "ui": {
+    "edition": "Community",
+    "nav": {
+      "main": "Main navigation",
+      "overview": "Overview",
+      "services": "Services"
+    },
+    "titlebar": {
+      "maximize": "Maximize",
+      "themeLight": "Light theme",
+      "themeDark": "Dark theme"
+    },
+    "conn": {
+      "toggle": "VPN connection",
+      "error": "Error",
+      "notConfigured": "No server set up"
+    },
+    "hero": {
+      "label": "Status",
+      "on": "Protected",
+      "off": "Not connected",
+      "error": "Connection failed",
+      "subOn": "Your traffic is encrypted via {{ host }}",
+      "subOnNoHost": "Your traffic is encrypted through the tunnel.",
+      "subConnecting": "This usually takes just a few seconds.",
+      "subError": "The last connection attempt failed.",
+      "subOff": "Your traffic goes unprotected over the local network.",
+      "subOffKs": "Kill switch active: internet is blocked until you connect.",
+      "tipAutoConnect": "Tip: automatic connect can be enabled in the settings.",
+      "retry": "Try again",
+      "showLog": "Show log",
+      "connectedSince": "Connected for"
+    },
+    "overview": {
+      "sub": "Server {{ host }}",
+      "subNone": "No server set up yet"
+    },
+    "protection": {
+      "title": "Protection",
+      "routing": "Routing",
+      "routingFull": "All traffic",
+      "routingSplit": "Split tunnel · {{ count }}",
+      "dnsTitle": "DNS leak test",
+      "dnsRun": "Test",
+      "dnsIdle": "Not checked in this session yet."
+    },
+    "throughput": {
+      "title": "Throughput",
+      "download": "Download",
+      "upload": "Upload",
+      "emptyTitle": "No live data",
+      "emptyDesc": "Connect to see throughput in real time."
+    },
+    "usage": {
+      "rx": "Received",
+      "tx": "Sent",
+      "p24h": "24 h"
+    },
+    "services": {
+      "showAll": "Show all",
+      "sub": "Internal applications reachable through this tunnel.",
+      "offline": "These services are only reachable while the VPN is connected.",
+      "connectNow": "Connect now",
+      "empty": "No services are shared with this device.",
+      "open": "Open",
+      "auth": "Sign-in"
+    },
+    "logs": {
+      "count": "{{ count }} entries · newest first",
+      "search": "Search messages",
+      "levelAll": "All",
+      "levelInfo": "Info",
+      "levelWarn": "Warning",
+      "levelError": "Error",
+      "colTime": "Time",
+      "colLevel": "Level",
+      "colMessage": "Message",
+      "noMatch": "No entries for these filters."
+    },
+    "settings": {
+      "tabConnection": "Connection",
+      "tabSecurity": "Security",
+      "tabSplit": "Split tunneling",
+      "tabApp": "Application",
+      "tabAdvanced": "Advanced",
+      "tabAbout": "About",
+      "importDesc": "Import a WireGuard file (.conf) or a setup QR code via webcam.",
+      "splitQuestion": "Which traffic goes through the VPN?",
+      "splitAll": "All traffic",
+      "splitAllDesc": "All internet and network traffic goes through the VPN. The safest option.",
+      "splitOnly": "Selected destinations only",
+      "splitOnlyDesc": "Only the IPs and subnets listed below go through the VPN.",
+      "themeSystem": "System",
+      "themeLight": "Light",
+      "themeDark": "Dark",
+      "themeDesc": "“System” follows the Windows setting.",
+      "autostartDesc": "GateControl starts in the notification area when you sign in.",
+      "minimizedDesc": "No window on startup, only the notification area icon.",
+      "autoConnectDesc": "Connect immediately on startup.",
+      "checkIntervalDesc": "How often the tunnel is checked for reachability (5–300 s).",
+      "pollIntervalDesc": "How often configuration and permissions are fetched from the server (30–3600 s).",
+      "seconds": "seconds",
+      "version": "Version {{ version }}",
+      "checking": "Checking …"
+    },
+    "statusbar": {
+      "ksOn": "Kill switch on",
+      "ksOff": "Kill switch off"
+    }
+  }
+}
