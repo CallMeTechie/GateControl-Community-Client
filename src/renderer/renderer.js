@@ -859,8 +859,8 @@ if (logLevelFilter) {
 const exportLogsBtn = $('#btn-export-logs');
 if (exportLogsBtn) {
 	exportLogsBtn.addEventListener('click', async () => {
-		const logPath = await logs.export();
-		if (logPath) shell.openExternal('file://' + logPath.replace(/\\/g, '/'));
+		// Shows the log file in Explorer (shell:open-external only takes http(s)).
+		await logs.show();
 	});
 }
 
