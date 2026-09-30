@@ -659,7 +659,7 @@ async function initServices() {
 	}
 
 	wgService = new WireGuardService(log, { resourcesPath: RESOURCES_PATH });
-	killSwitch = new KillSwitch(log);
+	killSwitch = new KillSwitch(log, { edition: 'community' });
 	rdpAllow = new RdpAllow(log);
 	apiClient = new ApiClient(
 		store.get('server.url', ''),
