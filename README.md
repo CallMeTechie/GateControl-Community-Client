@@ -199,7 +199,7 @@ Erstellt Windows-Firewall-Regeln (Whitelist-Ansatz):
 | DHCP (UDP 67/68) | Out | Allow |
 | Alles andere | In + Out | Block |
 
-Alle Regeln tragen den Prefix `GateControl_KS_` und werden beim Deaktivieren oder Deinstallieren vollständig entfernt.
+Alle Regeln tragen den Prefix `GateControl_Community_KS_` (der Pro Client nutzt `GateControl_Pro_KS_`) und werden beim Deaktivieren oder Deinstallieren vollständig entfernt; Regeln des jeweils anderen Clients bleiben unangetastet. Altregeln mit dem früheren gemeinsamen Prefix `GateControl_KS_` werden nur entfernt, wenn der Pro Client weder installiert ist noch läuft.
 
 ## Konfiguration
 
