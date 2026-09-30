@@ -39,6 +39,42 @@ if (coreDir) {
 }
 const skip = usable ? false : 'gatecontrol-client-core (with dependencies) not available';
 
+// Load the real preload with a fake electron and call every exposed function
+// once; returns the channels it invokes (core bridge + Community additions).
+function preloadInvokedChannels() {
+	const invoked = new Set();
+	let api = null;
+	const electron = {
+		contextBridge: { exposeInMainWorld: (_key, value) => { api = value; } },
+		ipcRenderer: {
+			invoke: (ch) => { invoked.add(ch); return Promise.resolve(); },
+			send() {}, on() {}, removeListener() {},
+		},
+	};
+	const realLoad = Module._load;
+	Module._load = function (request, ...rest) {
+		if (request === 'electron') return electron;
+		return realLoad.call(this, request, ...rest);
+	};
+	const file = path.join(ROOT, 'src', 'main', 'preload.js');
+	try {
+		delete require.cache[file];
+		require(file);
+	} finally {
+		Module._load = realLoad;
+	}
+	const walk = (obj) => {
+		for (const v of Object.values(obj)) {
+			if (typeof v === 'function') {
+				const r = v(() => {});
+				if (typeof r === 'function') r();
+			} else if (v && typeof v === 'object') walk(v);
+		}
+	};
+	walk(api);
+	return [...invoked];
+}
+
 describe('Community IPC channels', { skip }, () => {
 	function register(extra = {}) {
 		const { registerBaseHandlers } = require(path.join(coreDir, 'src', 'ipc', 'base-handlers.js'));
@@ -69,8 +105,8 @@ describe('Community IPC channels', { skip }, () => {
 	}
 
 	it('serves every channel the preload invokes', () => {
-		const preload = fs.readFileSync(path.join(ROOT, 'src', 'main', 'preload.js'), 'utf8');
-		const invoked = [...new Set([...preload.matchAll(/ipcRenderer\.invoke\('([^']+)'/g)].map((m) => m[1]))];
+		const invoked = preloadInvokedChannels();
+		assert.ok(invoked.includes('tunnel:connect') && invoked.includes('locale:get'));
 		const main = fs.readFileSync(path.join(ROOT, 'src', 'main', 'main.js'), 'utf8');
 		const own = [...main.matchAll(/ipcMain\.handle\('([^']+)'/g)].map((m) => m[1]);
 		const handlers = register();

@@ -2,9 +2,7 @@
   "ui": {
     "edition": "Community",
     "nav": {
-      "main": "Hauptnavigation",
-      "overview": "Übersicht",
-      "services": "Dienste"
+      "main": "Hauptnavigation"
     },
     "titlebar": {
       "maximize": "Maximieren",
@@ -12,7 +10,6 @@
       "themeDark": "Dunkles Design"
     },
     "conn": {
-      "toggle": "VPN-Verbindung",
       "error": "Fehler",
       "notConfigured": "Kein Server eingerichtet"
     },
@@ -21,15 +18,11 @@
       "on": "Geschützt",
       "off": "Nicht verbunden",
       "error": "Verbindung fehlgeschlagen",
-      "subOn": "Dein Verkehr läuft verschlüsselt über {{ host }}",
       "subOnNoHost": "Dein Verkehr läuft verschlüsselt durch den Tunnel.",
       "subConnecting": "Das dauert normalerweise nur wenige Sekunden.",
       "subError": "Der letzte Verbindungsversuch ist fehlgeschlagen.",
-      "subOff": "Dein Verkehr läuft ungeschützt über das lokale Netz.",
       "subOffKs": "Kill-Switch aktiv: Internet ist blockiert, bis du verbindest.",
       "tipAutoConnect": "Tipp: Automatisch verbinden lässt sich in den Einstellungen aktivieren.",
-      "retry": "Erneut versuchen",
-      "showLog": "Protokoll anzeigen",
       "connectedSince": "Verbunden seit"
     },
     "overview": {
@@ -37,8 +30,6 @@
       "subNone": "Noch kein Server eingerichtet"
     },
     "protection": {
-      "title": "Schutz",
-      "routing": "Routing",
       "routingFull": "Gesamter Verkehr",
       "routingSplit": "Split-Tunnel · {{ count }}",
       "dnsTitle": "DNS-Leak-Test",
@@ -46,7 +37,6 @@
       "dnsIdle": "Noch nicht geprüft in dieser Sitzung."
     },
     "throughput": {
-      "title": "Durchsatz",
       "download": "Download",
       "upload": "Upload",
       "emptyTitle": "Keine Live-Daten",
@@ -58,33 +48,24 @@
       "p24h": "24 h"
     },
     "services": {
-      "showAll": "Alle anzeigen",
       "sub": "Interne Anwendungen, die über diesen Tunnel erreichbar sind.",
       "offline": "Diese Dienste sind nur mit aktiver VPN-Verbindung erreichbar.",
-      "connectNow": "Jetzt verbinden",
-      "empty": "Für dieses Gerät sind keine Dienste freigegeben.",
-      "open": "Öffnen",
-      "auth": "Anmeldung"
+      "empty": "Für dieses Gerät sind keine Dienste freigegeben."
     },
     "logs": {
-      "count": "{{ count }} Einträge · neueste zuerst",
-      "search": "Meldungen durchsuchen",
       "levelAll": "Alle",
       "levelInfo": "Info",
       "levelWarn": "Warnung",
       "levelError": "Fehler",
       "colTime": "Zeit",
       "colLevel": "Stufe",
-      "colMessage": "Meldung",
-      "noMatch": "Keine Einträge für diese Filter."
+      "colMessage": "Meldung"
     },
     "settings": {
       "tabConnection": "Verbindung",
       "tabSecurity": "Sicherheit",
-      "tabSplit": "Split-Tunneling",
       "tabApp": "Anwendung",
       "tabAdvanced": "Erweitert",
-      "tabAbout": "Über",
       "importDesc": "Eine WireGuard-Datei (.conf) oder einen Einrichtungs-QR-Code per Webcam importieren.",
       "splitQuestion": "Welcher Verkehr geht durch das VPN?",
       "splitAll": "Gesamter Verkehr",
@@ -103,10 +84,6 @@
       "seconds": "Sekunden",
       "version": "Version {{ version }}",
       "checking": "Suche …"
-    },
-    "statusbar": {
-      "ksOn": "Kill-Switch an",
-      "ksOff": "Kill-Switch aus"
     }
   }
 }
