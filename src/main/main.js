@@ -28,6 +28,9 @@ const {
 const { i18n } = require('@gatecontrol/client-core');
 const { t, setLocale, getLocale, resolveLocale } = i18n;
 
+// Ed25519-Public-Key für signierte Updates (build/update-signing.pub).
+const { loadUpdatePublicKey } = require('./update-public-key');
+
 // ── Logging ──────────────────────────────────────────────────
 const log = createLogger();
 
@@ -736,10 +739,14 @@ app.whenReady().then(async () => {
 
 	// Updater before the IPC handlers: update:check and the post-setup
 	// updater.configure() need it (started further below).
+	// Nur signierte Updates: ohne echten Public Key bleibt der Updater aus.
 	updater = new Updater({
 		serverUrl: store.get('server.url', ''),
 		apiKey: store.get('server.apiKey', ''),
 		log,
+		clientType: 'community',
+		product: 'community',
+		publicKey: loadUpdatePublicKey(),
 	});
 
 	// IPC Handler registrieren (from core)

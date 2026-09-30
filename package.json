@@ -87,6 +87,10 @@
         "filter": [
           "**/*"
         ]
+      },
+      {
+        "from": "build/update-signing.pub",
+        "to": "update-signing.pub"
       }
     ],
     "publish": null
