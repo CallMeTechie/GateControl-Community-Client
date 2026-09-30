@@ -2,10 +2,11 @@
 ; WireGuard-nt ist in der App eingebettet, keine externe Installation noetig.
 
 ; Edition dieses Installers. Muss zu gatecontrol-client-core
-; src/services/editions.js passen (Kill-Switch-Regelpraefix sowie GUID
-; und productName der jeweils ANDEREN Edition); test/installer-nsh.test.js
-; prueft das.
+; src/services/editions.js passen (Kill-Switch-Regelpraefix, Name der
+; RDP-Freigaberegel sowie GUID und productName der jeweils ANDEREN
+; Edition); test/installer-nsh.test.js prueft das.
 !define GC_KS_PREFIX "GateControl_Community_KS"
+!define GC_RDP_RULE "GateControl_Community_RDP_Allow_In_3389"
 !define GC_OTHER_EDITION_GUID "c2dd862a-ec97-546e-8067-c1923aed53b2"
 !define GC_OTHER_EDITION_PRODUCT "GateControl Pro Client"
 
@@ -263,6 +264,60 @@
 !macroend
 ; ====================== Ende Kill-Switch-Aufraeumen =====================
 
+; ======================================================================
+; RDP-Freigabe aufraeumen beim Deinstallieren
+; (Dieser Block ist in Pro- und Community-Client identisch; die Edition
+; steckt nur in den Defines GC_RDP_RULE / GC_OTHER_EDITION_* oben.)
+;
+; rdp-allow.js im Core legt die eingehende Regel "${GC_RDP_RULE}"
+; (TCP 3389 aus dem VPN-Subnetz) an - pro Edition eigener Name, siehe
+; core services/editions.js. Die Regel der anderen Edition wird nie
+; angefasst.
+;
+; Altregel: Versionen vor der Trennung nutzten in BEIDEN Apps den Namen
+; "GateControl_RDP_Allow_In_3389". Sie ist keiner App zuzuordnen und wird
+; nur geloescht, wenn die andere Edition weder installiert ist noch
+; laeuft (GC_DETECT_OTHER_EDITION, im Zweifel "vorhanden"). Dieselbe
+; Regel gilt im Core (RdpAllow.removeLegacyRule()).
+;
+; netsh "name=" ist ein exakter Vergleich des Anzeigenamens, keine
+; Wildcard. Register $1, $3-$6 werden gesichert und wiederhergestellt.
+; ======================================================================
+!define GC_LEGACY_RDP_RULE "GateControl_RDP_Allow_In_3389"
+
+!macro GC_CLEANUP_RDP_FIREWALL
+  Push $1
+  Push $3
+  Push $4
+  Push $5
+  Push $6
+
+  ${If} ${FileExists} "$WINDIR\Sysnative\netsh.exe"
+    StrCpy $1 "$WINDIR\Sysnative\netsh.exe"
+  ${Else}
+    StrCpy $1 "$SYSDIR\netsh.exe"
+  ${EndIf}
+
+  DetailPrint "GateControl: RDP-Freigabe (${GC_RDP_RULE}) entfernen ..."
+  nsExec::ExecToLog `"$1" advfirewall firewall delete rule name=${GC_RDP_RULE}`
+  Pop $3
+
+  !insertmacro GC_DETECT_OTHER_EDITION
+  ${If} $6 == 0
+    nsExec::ExecToLog `"$1" advfirewall firewall delete rule name=${GC_LEGACY_RDP_RULE}`
+    Pop $3
+  ${Else}
+    DetailPrint "GateControl: ${GC_OTHER_EDITION_PRODUCT} vorhanden - Altregel ${GC_LEGACY_RDP_RULE} bleibt erhalten."
+  ${EndIf}
+
+  Pop $6
+  Pop $5
+  Pop $4
+  Pop $3
+  Pop $1
+!macroend
+; ====================== Ende RDP-Freigabe-Aufraeumen ====================
+
 !macro customUnInstall
   ; Bei einem Update (--updated) laeuft der alte Deinstaller vor der neuen
   ; Installation. Dann bleibt der Kill-Switch-Zustand erhalten; die neue
@@ -271,5 +326,8 @@
   ; wie es der Kill-Switch vorsieht.
   ${IfNot} ${isUpdated}
     !insertmacro GC_CLEANUP_KILLSWITCH_FIREWALL
+
+    ; RDP-Freigabe dieser Edition (Altregel nur ohne andere Edition)
+    !insertmacro GC_CLEANUP_RDP_FIREWALL
   ${EndIf}
 !macroend

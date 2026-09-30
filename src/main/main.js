@@ -660,7 +660,7 @@ async function initServices() {
 
 	wgService = new WireGuardService(log, { resourcesPath: RESOURCES_PATH });
 	killSwitch = new KillSwitch(log, { edition: 'community' });
-	rdpAllow = new RdpAllow(log);
+	rdpAllow = new RdpAllow(log, { edition: 'community' });
 	apiClient = new ApiClient(
 		store.get('server.url', ''),
 		store.get('server.apiKey', ''),
@@ -718,16 +718,14 @@ app.whenReady().then(async () => {
 	// Start nie aktiv; bei Einstellung "an" aktiviert connectTunnel ihn neu)
 	await recoverKillSwitch({ killSwitch, store, wgService, log });
 
-	// RDP Allow Cleanup
+	// RDP Allow mit der Einstellung abgleichen: verwaiste Regel entfernen,
+	// aktive übernehmen bzw. wiederherstellen. Die alte gemeinsame Regel
+	// GateControl_RDP_Allow_In_3389 entfernt der Core nur, wenn die
+	// Pro-Edition weder installiert ist noch läuft.
 	try {
-		const rdpWasActive = await rdpAllow.isActive();
-		if (rdpWasActive && !store.get('tunnel.rdpAllow', false)) {
-			log.warn('Verwaiste RDP-Allow Regeln gefunden — bereinige...');
-			await rdpAllow.disable();
-		} else if (rdpWasActive) {
-			log.info('RDP Allow war beim letzten Beenden aktiv — Regeln bleiben bestehen');
-			rdpAllow.enabled = true;
-		}
+		const rdpWanted = store.get('tunnel.rdpAllow', false);
+		const rdpActive = await rdpAllow.reconcile({ wanted: rdpWanted, configPath: WG_CONFIG_FILE });
+		if (rdpWanted && !rdpActive) store.set('tunnel.rdpAllow', false);
 	} catch (err) {
 		log.debug('RDP Allow Cleanup:', err.message);
 	}
