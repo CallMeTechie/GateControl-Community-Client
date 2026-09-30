@@ -10,6 +10,8 @@ const path = require('path');
 
 // Pure tunnel/portal decision logic (unit-tested in test/tunnel-logic.test.js).
 const { reconnectDelay, shouldOpenPortal } = require('./tunnel-logic');
+// Kill-Switch-Aufräumen beim Start (unit-tested in test/killswitch-startup.test.js).
+const { recoverKillSwitch } = require('./killswitch-startup');
 
 const {
   WireGuardService,
@@ -456,7 +458,7 @@ async function disconnectTunnel() {
 
 		await wgService.disconnect();
 
-		if (store.get('tunnel.killSwitch', false)) {
+		if (killSwitch.enabled || store.get('tunnel.killSwitch', false)) {
 			await killSwitch.disable();
 			log.info('Kill-Switch deaktiviert');
 		}
@@ -618,7 +620,9 @@ async function installUpdate() {
 	if (killSwitch?.enabled) {
 		try {
 			await killSwitch.disable();
-		} catch {}
+		} catch (err) {
+			log.error('Kill-Switch konnte vor dem Update nicht deaktiviert werden:', err.message);
+		}
 	}
 
 	updater.install();
@@ -709,19 +713,10 @@ app.whenReady().then(async () => {
 
 	await initServices();
 
-	// Kill-Switch Cleanup
-	try {
-		const wasActive = await killSwitch.isActive();
-		if (wasActive && !store.get('tunnel.killSwitch', false)) {
-			log.warn('Verwaiste Kill-Switch Regeln gefunden — bereinige...');
-			await killSwitch.disable();
-		} else if (wasActive) {
-			log.info('Kill-Switch war beim letzten Beenden aktiv — Regeln bleiben bestehen');
-			killSwitch.enabled = true;
-		}
-	} catch (err) {
-		log.debug('Kill-Switch Cleanup:', err.message);
-	}
+	// Kill-Switch Cleanup: Reste eines Absturzes entfernen und die vorher
+	// gesicherte Firewall-Policy wiederherstellen (Tunnel ist nach dem
+	// Start nie aktiv; bei Einstellung "an" aktiviert connectTunnel ihn neu)
+	await recoverKillSwitch({ killSwitch, store, wgService, log });
 
 	// RDP Allow Cleanup
 	try {
@@ -878,7 +873,10 @@ async function quitApp() {
 	if (killSwitch?.enabled) {
 		try {
 			await killSwitch.disable();
-		} catch {}
+		} catch (err) {
+			// Zustand bleibt gespeichert — der nächste Start räumt auf
+			log.error('Kill-Switch konnte beim Beenden nicht deaktiviert werden:', err.message);
+		}
 	}
 
 	if (rdpAllow?.enabled) {
