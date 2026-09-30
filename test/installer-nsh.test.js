@@ -35,6 +35,19 @@ function coreKillswitchSource() {
   return null;
 }
 
+// Dateiname der App-Exe, wie electron-builder ihn bildet
+// (appInfo.productFilename: win.executableName ?? executableName ?? productName).
+function expectedExeFilename() {
+  const b = pkg.build || {};
+  const name = (b.win && b.win.executableName) || b.executableName || b.productName || pkg.productName || pkg.name;
+  return name + '.exe';
+}
+
+// Alle Verweise auf eine Exe im Installationsverzeichnis ($INSTDIR\...exe).
+function instdirExeRefs() {
+  return [...code.matchAll(/\$INSTDIR\\([^"'\r\n]*?\.exe)/gi)].map(m => m[1]);
+}
+
 describe('NSIS installer script (scripts/installer.nsh)', () => {
   it('is wired into electron-builder via nsis.include', () => {
     assert.equal(pkg.build.nsis.include, 'scripts/installer.nsh');
@@ -116,5 +129,21 @@ describe('NSIS installer script (scripts/installer.nsh)', () => {
     assert.ok(names.size >= 10, 'zu wenige Regelnamen aus dem Core extrahiert');
     const fallback = new Set([...code.matchAll(/!insertmacro GC_NETSH_DELETE_KS_RULE (\S+)/g)].map(m => m[1]));
     for (const n of names) assert.ok(fallback.has(n), 'Fallback-Loeschliste fehlt ' + n);
+  });
+
+  it('references the app exe only by its real file name', () => {
+    const exe = expectedExeFilename();
+    // electron-builder: !define APP_EXECUTABLE_FILENAME "${PRODUCT_FILENAME}.exe"
+    const resolved = instdirExeRefs().map(r => r.replace('${APP_EXECUTABLE_FILENAME}', exe));
+    for (const ref of resolved) {
+      assert.equal(ref, exe, 'falscher Exe-Pfad $INSTDIR\\' + ref + ' (erwartet ' + exe + ')');
+    }
+  });
+
+  it('release workflow patches the real app exe in win-unpacked', () => {
+    const wf = fs.readFileSync(path.join(ROOT, '.github/workflows/release.yml'), 'utf8');
+    const refs = [...wf.matchAll(/win-unpacked\/([^"'\n]+\.exe)/g)].map(m => m[1]);
+    assert.ok(refs.length > 0, 'kein win-unpacked-Exe-Pfad in release.yml gefunden');
+    for (const ref of refs) assert.equal(ref, expectedExeFilename());
   });
 });
