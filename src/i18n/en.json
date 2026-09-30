@@ -2,9 +2,7 @@
   "ui": {
     "edition": "Community",
     "nav": {
-      "main": "Main navigation",
-      "overview": "Overview",
-      "services": "Services"
+      "main": "Main navigation"
     },
     "titlebar": {
       "maximize": "Maximize",
@@ -12,7 +10,6 @@
       "themeDark": "Dark theme"
     },
     "conn": {
-      "toggle": "VPN connection",
       "error": "Error",
       "notConfigured": "No server set up"
     },
@@ -21,15 +18,11 @@
       "on": "Protected",
       "off": "Not connected",
       "error": "Connection failed",
-      "subOn": "Your traffic is encrypted via {{ host }}",
       "subOnNoHost": "Your traffic is encrypted through the tunnel.",
       "subConnecting": "This usually takes just a few seconds.",
       "subError": "The last connection attempt failed.",
-      "subOff": "Your traffic goes unprotected over the local network.",
       "subOffKs": "Kill switch active: internet is blocked until you connect.",
       "tipAutoConnect": "Tip: automatic connect can be enabled in the settings.",
-      "retry": "Try again",
-      "showLog": "Show log",
       "connectedSince": "Connected for"
     },
     "overview": {
@@ -37,8 +30,6 @@
       "subNone": "No server set up yet"
     },
     "protection": {
-      "title": "Protection",
-      "routing": "Routing",
       "routingFull": "All traffic",
       "routingSplit": "Split tunnel · {{ count }}",
       "dnsTitle": "DNS leak test",
@@ -46,7 +37,6 @@
       "dnsIdle": "Not checked in this session yet."
     },
     "throughput": {
-      "title": "Throughput",
       "download": "Download",
       "upload": "Upload",
       "emptyTitle": "No live data",
@@ -58,33 +48,24 @@
       "p24h": "24 h"
     },
     "services": {
-      "showAll": "Show all",
       "sub": "Internal applications reachable through this tunnel.",
       "offline": "These services are only reachable while the VPN is connected.",
-      "connectNow": "Connect now",
-      "empty": "No services are shared with this device.",
-      "open": "Open",
-      "auth": "Sign-in"
+      "empty": "No services are shared with this device."
     },
     "logs": {
-      "count": "{{ count }} entries · newest first",
-      "search": "Search messages",
       "levelAll": "All",
       "levelInfo": "Info",
       "levelWarn": "Warning",
       "levelError": "Error",
       "colTime": "Time",
       "colLevel": "Level",
-      "colMessage": "Message",
-      "noMatch": "No entries for these filters."
+      "colMessage": "Message"
     },
     "settings": {
       "tabConnection": "Connection",
       "tabSecurity": "Security",
-      "tabSplit": "Split tunneling",
       "tabApp": "Application",
       "tabAdvanced": "Advanced",
-      "tabAbout": "About",
       "importDesc": "Import a WireGuard file (.conf) or a setup QR code via webcam.",
       "splitQuestion": "Which traffic goes through the VPN?",
       "splitAll": "All traffic",
@@ -103,10 +84,6 @@
       "seconds": "seconds",
       "version": "Version {{ version }}",
       "checking": "Checking …"
-    },
-    "statusbar": {
-      "ksOn": "Kill switch on",
-      "ksOff": "Kill switch off"
     }
   }
 }

@@ -8,11 +8,6 @@
 const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, dialog, Notification, screen, nativeTheme } = require('electron');
 const path = require('path');
 
-// Pure tunnel/portal decision logic (unit-tested in test/tunnel-logic.test.js).
-const { reconnectDelay, shouldOpenPortal } = require('./tunnel-logic');
-// Kill-Switch-Aufräumen beim Start (unit-tested in test/killswitch-startup.test.js).
-const { recoverKillSwitch } = require('./killswitch-startup');
-
 const {
   WireGuardService,
   ApiClient,
@@ -25,13 +20,18 @@ const {
   createStores,
   registerBaseHandlers,
   validateWgConfig,
+  // Shared helpers (unit-tested in core): pure tunnel/portal logic,
+  // kill-switch startup recovery, tray icon, update key loader.
+  reconnectDelay,
+  shouldOpenPortal,
+  recoverKillSwitch,
+  createTrayIcon,
+  formatBytesShort,
+  loadUpdatePublicKey,
 } = require('@gatecontrol/client-core');
 
 const { i18n } = require('@gatecontrol/client-core');
 const { t, setLocale, getLocale, resolveLocale } = i18n;
-
-// Ed25519-Public-Key für signierte Updates (build/update-signing.pub).
-const { loadUpdatePublicKey } = require('./update-public-key');
 
 // ── Logging ──────────────────────────────────────────────────
 const log = createLogger();
@@ -96,75 +96,9 @@ function openPortalSafe() {
 	}
 }
 
-function formatBytesShort(bytes) {
-	if (!bytes || bytes <= 0) return '0 B';
-	const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-	const i = Math.floor(Math.log(bytes) / Math.log(1024));
-	return (bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0) + ' ' + units[i];
-}
-
-// ── Tray Icon (Sun/Star design — circle + 8 rays) ───────────
+// ── Tray Icon (Sun/Star design, drawn by core) ──────────────
 function getIcon(state) {
-	const color = state === 'connected' ? [0x22, 0xC5, 0x5E]   // green
-		: state === 'connecting' ? [0xF5, 0x9E, 0x0B]             // amber
-		: [0xEF, 0x44, 0x44];                                      // red
-
-	const size = 32;
-	const buf = Buffer.alloc(size * size * 4, 0);
-	const cx = size / 2;
-	const cy = size / 2;
-
-	function setPixel(px, py) {
-		const x = Math.round(px);
-		const y = Math.round(py);
-		if (x < 0 || x >= size || y < 0 || y >= size) return;
-		const i = (y * size + x) * 4;
-		buf[i] = color[0]; buf[i + 1] = color[1]; buf[i + 2] = color[2]; buf[i + 3] = 255;
-	}
-
-	// Ring
-	const ringR = 5.0;
-	const ringThick = 1.8;
-	for (let a = 0; a < 360; a += 1) {
-		const rad = a * Math.PI / 180;
-		for (let t = -ringThick / 2; t <= ringThick / 2; t += 0.4) {
-			setPixel(cx + (ringR + t) * Math.cos(rad), cy + (ringR + t) * Math.sin(rad));
-		}
-	}
-
-	// Center dot
-	for (let dx = -1.5; dx <= 1.5; dx += 0.5) {
-		for (let dy = -1.5; dy <= 1.5; dy += 0.5) {
-			if (dx * dx + dy * dy <= 2.0) setPixel(cx + dx, cy + dy);
-		}
-	}
-
-	// 8 rays
-	const rayInner = 8.5;
-	const rayOuter = 13.5;
-	const rayThick = 2.0;
-	for (let i = 0; i < 8; i++) {
-		const angle = i * 45 * Math.PI / 180;
-		const cos = Math.cos(angle);
-		const sin = Math.sin(angle);
-		const perpCos = Math.cos(angle + Math.PI / 2);
-		const perpSin = Math.sin(angle + Math.PI / 2);
-		for (let d = rayInner; d <= rayOuter; d += 0.3) {
-			for (let t = -rayThick / 2; t <= rayThick / 2; t += 0.4) {
-				setPixel(cx + d * cos + t * perpCos, cy + d * sin + t * perpSin);
-			}
-		}
-		for (let dx = -rayThick / 2; dx <= rayThick / 2; dx += 0.4) {
-			for (let dy = -rayThick / 2; dy <= rayThick / 2; dy += 0.4) {
-				if (dx * dx + dy * dy <= (rayThick / 2) * (rayThick / 2)) {
-					setPixel(cx + rayInner * cos + dx * perpCos + dy * cos, cy + rayInner * sin + dx * perpSin + dy * sin);
-					setPixel(cx + rayOuter * cos + dx * perpCos + dy * cos, cy + rayOuter * sin + dx * perpSin + dy * sin);
-				}
-			}
-		}
-	}
-
-	return nativeImage.createFromBuffer(buf, { width: size, height: size });
+	return createTrayIcon(nativeImage, state);
 }
 
 function updateTray(state) {
@@ -739,7 +673,8 @@ app.whenReady().then(async () => {
 		log,
 		clientType: 'community',
 		product: 'community',
-		publicKey: loadUpdatePublicKey(),
+		// Ed25519-Public-Key für signierte Updates (build/update-signing.pub).
+		publicKey: loadUpdatePublicKey({ appRoot: path.join(__dirname, '..', '..') }),
 	});
 
 	// IPC Handler registrieren (from core)
