@@ -87,7 +87,8 @@
         "from": "resources/",
         "to": "resources/",
         "filter": [
-          "**/*"
+          "**/*",
+          "!bin/*.dll"
         ]
       },
       {
