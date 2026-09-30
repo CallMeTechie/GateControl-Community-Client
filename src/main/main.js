@@ -541,7 +541,12 @@ function showUpdateNotification(release) {
 }
 
 async function installUpdate() {
-	if (!pendingUpdate || !updater?.isUpdateReady()) return false;
+	// Only the updater's verified state counts: a manual check may leave
+	// the cached release info unset or without an installer path.
+	if (!updater?.isUpdateReady()) {
+		log.warn('Update-Installation angefordert, aber kein geprüftes Update bereit');
+		return false;
+	}
 
 	log.info('Update-Installation gestartet...');
 
@@ -559,7 +564,8 @@ async function installUpdate() {
 		}
 	}
 
-	updater.install();
+	// Re-hashes the installer before starting it.
+	if (!updater.install()) return false;
 
 	setTimeout(() => quitApp(), 1500);
 	return true;
