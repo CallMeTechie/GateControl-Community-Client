@@ -25,7 +25,7 @@ Electron-basierter WireGuard VPN-Client mit nativer WireGuard-Integration (FFI),
 
 - **Windows 10/11** (64-Bit)
 - **Administrator-Rechte** (für WireGuard-Adapter und Firewall-Regeln)
-- **Node.js 20+** (nur für Entwicklung)
+- **Node.js 24** (nur für Entwicklung; mindestens 22.12 für Electron 44)
 - **GateControl Server** mit API-Token (Scope: `client`)
 
 > **Hinweis:** WireGuard muss **nicht** separat installiert werden. Die benötigten DLLs (`wireguard.dll`, `wintun.dll`) sind in `resources/bin/` eingebettet.
@@ -62,6 +62,27 @@ npm run dev
 # Produktions-Start
 npm start
 ```
+
+## Core-Abhängigkeit (gatecontrol-client-core)
+
+Die gemeinsame Logik liegt in [gatecontrol-client-core](https://github.com/CallMeTechie/gatecontrol-client-core). Welcher Core-Stand gebaut wird, ist in **`core.ref`** als vollständiger 40-stelliger Commit-SHA festgelegt. Alle Workflows (PR-Check, Security, Release) holen genau diesen Commit nach `.core` (`scripts/fetch-core.sh --link`) – ein neuer Merge in Core ändert einen Client-Build also erst, wenn `core.ref` angehoben wird.
+
+**Lokale Entwicklung:** `package.json` zeigt auf den Nachbar-Checkout `../gatecontrol-client-core`. Diesen auf den gepinnten Stand bringen (legt das Verzeichnis bei Bedarf an, bricht bei uncommitteten Änderungen ab):
+
+```bash
+npm run core:fetch -- ../gatecontrol-client-core
+npm install
+```
+
+**Core anheben:**
+
+```bash
+npm run core:bump             # core.ref auf aktuellen core master setzen
+npm run core:bump -- <SHA>    # oder auf einen bestimmten Commit
+npm run core:fetch -- ../gatecontrol-client-core && npm test
+```
+
+Die Änderung an `core.ref` per Pull Request einreichen; der PR-Check testet dann gegen den neuen Core-Stand.
 
 ## Build
 
@@ -214,13 +235,13 @@ Alle Regeln tragen den Prefix `GateControl_KS_` und werden beim Deaktivieren ode
 
 | Komponente | Technologie | Version |
 |-----------|------------|---------|
-| Framework | Electron | 30.0.0 |
+| Framework | Electron | 44 |
 | VPN | WireGuard-NT (FFI) | via Koffi 2.9 |
 | HTTP | Axios | 1.7 |
 | Storage | electron-store | 8.2 (verschlüsselt) |
 | Logging | electron-log | 5.1 |
 | QR-Scanner | jsqr | 1.4 |
-| Build | electron-builder | 24.13 (NSIS) |
+| Build | electron-builder | 26 (NSIS) |
 
 ## Signierte Updates
 

@@ -13,19 +13,21 @@
     "build:installer": "electron-builder --win nsis",
     "postinstall": "electron-builder install-app-deps",
     "syntax": "node -e \"const fs=require('fs'),path=require('path'),{execFileSync}=require('child_process');let ok=0,fail=0;const check=d=>{for(const f of fs.readdirSync(d,{withFileTypes:true})){const p=path.join(d,f.name);if(f.isDirectory()&&f.name!=='node_modules')check(p);else if(f.name.endsWith('.js')){try{execFileSync(process.execPath,['--check',p]);ok++}catch(e){console.error('FAIL:',p);fail++}}}};check('src');console.log(ok+' files OK'+(fail?' '+fail+' FAILED':''));if(fail)process.exit(1)\"",
-    "test": "npm run syntax && node --test \"test/**/*.test.js\""
+    "test": "npm run syntax && node --test \"test/**/*.test.js\"",
+    "core:fetch": "bash scripts/fetch-core.sh",
+    "core:bump": "bash scripts/bump-core.sh"
   },
   "dependencies": {
     "@gatecontrol/client-core": "file:../gatecontrol-client-core"
   },
   "devDependencies": {
     "cross-env": "^7.0.3",
-    "electron": "^41.2.0",
+    "electron": "^44.5.1",
     "electron-builder": "^26.8.1"
   },
   "overrides": {
     "@xmldom/xmldom": "0.8.13",
-    "fast-uri": "3.1.2",
+    "fast-uri": "3.1.8",
     "ip-address": "10.1.1",
     "tar": "7.5.22"
   },
