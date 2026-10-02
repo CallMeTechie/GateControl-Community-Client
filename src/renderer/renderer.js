@@ -3,7 +3,7 @@
  * UI-Logik und State Management
  */
 
-const { tunnel, server, config, killSwitch, rdpAllow, autostart, logs, update, services, traffic, dns, shell, peer, permissions, onPortalUrl, getVersion, window: win, locale } = window.gatecontrol;
+const { tunnel, server, config, killSwitch, rdpAllow, autostart, logs, update, services, traffic, dns, shell, peer, permissions, onPortalUrl, getVersion, window: win, locale, policy: clientPolicy } = window.gatecontrol;
 const { t } = window.gatecontrol.i18n;
 
 // Aktive Berechtigungen (werden beim Connect geladen)
@@ -16,6 +16,9 @@ let currentPortalUrl = null;
 let pendingUpdate = null;
 let updateCardHidden = false;
 let updatePolicy = null;
+// Client policy from the server (core ClientPolicyService state):
+// { fetched, managed, policy, locks, splitModes }. Unmanaged until loaded.
+let policyState = { fetched: false, managed: false, policy: null, locks: {}, splitModes: ['off', 'include'] };
 
 // ── DOM-Elemente ─────────────────────────────────────────
 const $ = (sel) => document.querySelector(sel);
@@ -243,6 +246,7 @@ locale.onChange((loc) => {
 	if (selectEl) selectEl.value = loc;
 	updateDOM();
 	updateUI();
+	applyPolicyUi();
 });
 
 const localeSelect = document.querySelector('#locale-select');
@@ -347,7 +351,12 @@ function updateUI() {
 	el.sideToggle.classList.toggle('on', ui === 'on');
 	el.sideToggle.classList.toggle('busy', ui === 'connecting');
 	el.sideToggle.setAttribute('aria-pressed', ui === 'on' ? 'true' : 'false');
-	el.sideToggle.disabled = ui === 'connecting';
+	// Always-on policy: no manual disconnect
+	const disconnectLocked = !!policyState.locks.disconnect && ui === 'on';
+	el.sideToggle.disabled = ui === 'connecting' || disconnectLocked;
+	el.connectBtn.disabled = disconnectLocked;
+	el.connectBtn.title = disconnectLocked ? t('policy.disconnectLocked') : '';
+	el.sideToggle.title = disconnectLocked ? t('policy.disconnectLocked') : '';
 	updateSideSub();
 
 	// Stats
@@ -427,6 +436,7 @@ async function toggleConnection() {
 	if (state.status === 'connecting') return;
 
 	if (state.connected) {
+		if (policyState.locks.disconnect) return;
 		await tunnel.disconnect();
 	} else {
 		await tunnel.connect();
@@ -686,6 +696,7 @@ function renderSplitMode() {
 		opt.setAttribute('aria-pressed', (opt.dataset.split === 'on') === on ? 'true' : 'false');
 	});
 	el.splitRoutesSection.hidden = !on;
+	applySplitPolicy();
 }
 
 function renderRouting() {
@@ -718,8 +729,7 @@ el.optSplitTunnel.addEventListener('change', async (e) => {
 		showSplitStatus(e.target.checked
 			? t('split.activateOnReconnect')
 			: t('split.fullTunnelOnReconnect'), 'info');
-		await tunnel.disconnect();
-		await tunnel.connect();
+		await tunnel.reconnect();
 	}
 });
 
@@ -739,8 +749,7 @@ $('#btn-save-split').addEventListener('click', async () => {
 
 	// Reconnect wenn verbunden
 	if (state.connected) {
-		await tunnel.disconnect();
-		await tunnel.connect();
+		await tunnel.reconnect();
 	} else {
 		showSplitStatus(t('split.routesSavedPending', { count }), 'info');
 	}
@@ -1422,3 +1431,100 @@ renderDns();
 renderRouting();
 renderServices();
 renderOverviewHeader();
+
+// ══════════════════════════════════════════════════════════
+//  CLIENT-RICHTLINIE (vom Server, "Vom Administrator festgelegt")
+// ══════════════════════════════════════════════════════════
+/** Disable a control and show/remove the "set by your administrator" hint. */
+function setPolicyLock(control, locked, hintHost, hintKey = 'policy.lockedHint') {
+	if (control) {
+		control.disabled = !!locked;
+		control.classList.toggle('policy-locked', !!locked);
+	}
+	if (!hintHost) return;
+	let hint = hintHost.querySelector(':scope > .policy-hint');
+	if (locked) {
+		if (!hint) {
+			hint = document.createElement('div');
+			hint.className = 'policy-hint';
+			hintHost.appendChild(hint);
+		}
+		hint.textContent = t(hintKey);
+	} else if (hint) {
+		hint.remove();
+	}
+}
+
+const rowOf = (node) => node?.closest('.set-row')?.querySelector('.grow') || node?.closest('.field');
+
+function applySplitPolicy() {
+	const p = policyState.policy || {};
+	const modes = policyState.splitModes || ['off', 'include'];
+	const frozen = !!(p.lockSettings || p.splitTunnelLocked);
+	const offBtn = $('.opt[data-split="off"]');
+	const onBtn = $('.opt[data-split="on"]');
+	if (!offBtn || !onBtn) return;
+	setPolicyLock(offBtn, frozen || !modes.includes('off'), null);
+	setPolicyLock(onBtn, frozen || !modes.includes('include'), null);
+	const card = offBtn.closest('.set-card');
+	setPolicyLock(null, frozen || modes.length < 2, card, p.splitTunnelLocked ? 'policy.splitModeLocked' : 'policy.lockedHint');
+	const routesLocked = !!policyState.locks.splitRoutes;
+	el.optSplitRoutes.disabled = routesLocked;
+	$('#btn-save-split').disabled = routesLocked;
+}
+
+function applyPolicyUi() {
+	const l = policyState.locks || {};
+	const p = policyState.policy || {};
+	setPolicyLock(el.killswitchToggle, l.killSwitch, rowOf(el.killswitchToggle), p.killSwitch === 'required' ? 'policy.killSwitchRequired' : 'policy.lockedHint');
+	setPolicyLock(el.killswitchQuick, l.killSwitch, null);
+	el.killswitchQuick.closest('label')?.setAttribute('title', l.killSwitch ? t('policy.lockedHint') : '');
+	setPolicyLock(el.rdpAllowToggle, l.settings, rowOf(el.rdpAllowToggle));
+	setPolicyLock(el.optAutostart, l.autostart, rowOf(el.optAutostart), p.autostart === 'forbidden' ? 'policy.autostartForbidden' : 'policy.lockedHint');
+	setPolicyLock(el.optAutoconnect, l.autoConnect, rowOf(el.optAutoconnect));
+	setPolicyLock(el.optMinimized, l.settings, rowOf(el.optMinimized));
+	setPolicyLock(el.optCheckInterval, l.settings, rowOf(el.optCheckInterval));
+	setPolicyLock(el.optPollInterval, l.settings, rowOf(el.optPollInterval));
+
+	// Server change / config import (re-setup)
+	const serverCard = el.serverUrl?.closest('section');
+	const importCard = $('#btn-import-file')?.closest('section');
+	if (serverCard) serverCard.hidden = !!l.server;
+	if (importCard) importCard.hidden = !!l.server;
+	const serverHint = $('#policy-server-hint');
+	if (serverHint) {
+		serverHint.hidden = !l.server;
+		serverHint.textContent = t('policy.serverLocked');
+	}
+
+	const banner = $('#policy-banner');
+	if (banner) {
+		banner.hidden = !policyState.managed;
+		banner.textContent = t('policy.managedBanner');
+	}
+	applySplitPolicy();
+}
+
+/** Policy changed in main: re-read the (possibly forced) settings and lock the UI. */
+async function onPolicyState(st) {
+	if (!st) return;
+	policyState = st;
+	try {
+		const cfg = await config.getAll();
+		if (cfg) {
+			el.optAutostart.checked = cfg.app?.startWithWindows ?? true;
+			el.optAutoconnect.checked = cfg.tunnel?.autoConnect ?? true;
+			view.autoConnect = el.optAutoconnect.checked;
+			el.optSplitTunnel.checked = cfg.tunnel?.splitTunnel ?? false;
+			view.splitTunnel = el.optSplitTunnel.checked;
+			state = { ...state, killSwitch: cfg.tunnel?.killSwitch ?? state.killSwitch };
+		}
+	} catch { /* keep the current view */ }
+	renderSplitMode();
+	renderRouting();
+	updateUI();
+	applyPolicyUi();
+}
+
+clientPolicy.onChange((st) => { onPolicyState(st); });
+clientPolicy.get().then((st) => onPolicyState(st)).catch(() => {});

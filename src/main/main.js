@@ -20,6 +20,9 @@ const {
   ConnectionMonitor,
   Updater,
   DnsPolicy,
+  ClientPolicyService,
+  clientPolicy: clientPolicyUtil,
+  applyPolicyToStore,
   createLogger,
   createStores,
   registerBaseHandlers,
@@ -65,6 +68,7 @@ let killSwitch = null;
 let rdpAllow = null;
 let apiClient = null;
 let dnsPolicy = null;
+let clientPolicy = null;
 let connectionMonitor = null;
 let updater = null;
 let pendingUpdate = null;
@@ -167,13 +171,16 @@ function updateTray(state) {
 		{ type: 'separator' },
 		{
 			label: state === 'connected' ? t('action.disconnect') : t('action.connect'),
+			// Always-on policy: no manual disconnect
+			enabled: !(state === 'connected' && policyLocks().disconnect),
 			click: () => state === 'connected' ? disconnectTunnel() : connectTunnel(),
 		},
 		{ type: 'separator' },
 		{
-			label: t('killswitch.label'),
+			label: policyLocks().killSwitch ? `${t('killswitch.label')} (${t('policy.lockedHint')})` : t('killswitch.label'),
 			type: 'checkbox',
 			checked: store.get('tunnel.killSwitch', false),
+			enabled: !policyLocks().killSwitch,
 			click: (item) => toggleKillSwitch(item.checked),
 		},
 		{ type: 'separator' },
@@ -429,6 +436,51 @@ async function disconnectTunnel() {
 	}
 }
 
+// ── Client-Richtlinie ────────────────────────────────────────
+function policyLocks() {
+	return clientPolicyUtil.locks(clientPolicy ? clientPolicy.getPolicy() : null);
+}
+
+function setAutostart(enabled) {
+	if (e2e) return;
+	app.setLoginItemSettings({
+		openAtLogin: enabled,
+		path: process.execPath,
+		args: ['--minimized'],
+	});
+}
+
+/**
+ * Apply the (cached or freshly fetched) client policy: force the store
+ * values and act on what changed. Runs at start-up with the cached policy
+ * (offline-safe) and on every policy change.
+ */
+async function applyClientPolicy({ startup = false } = {}) {
+	if (!clientPolicy) return;
+	const policy = clientPolicy.getPolicy();
+	const changed = applyPolicyToStore(store, policy, log);
+	if (Object.keys(changed).length) log.info(`Client policy applied: ${JSON.stringify(changed)}`);
+
+	if (changed['tunnel.killSwitch'] === true && tunnelState.connected && !killSwitch.enabled) {
+		try { await killSwitch.enable(WG_CONFIG_FILE); } catch (err) { log.error('Kill-switch (policy) failed:', err.message); }
+	}
+	if (Object.prototype.hasOwnProperty.call(changed, 'app.startWithWindows')) {
+		try { setAutostart(changed['app.startWithWindows']); } catch (err) { log.warn('Autostart (policy) failed:', err.message); }
+	}
+	if (!startup) {
+		const hasServer = store.get('server.url', '') !== '';
+		if (Object.prototype.hasOwnProperty.call(changed, 'tunnel.splitTunnel') && tunnelState.connected && !isReconnecting) {
+			await disconnectTunnel();
+			await connectTunnel();
+		} else if (policy.autoConnect !== 'user' && hasServer && !tunnelState.connected && !isReconnecting) {
+			connectTunnel().catch(() => {});
+		}
+	}
+	broadcastState(tunnelState.connected ? 'connected' : 'disconnected');
+	updateTray(tunnelState.connected ? 'connected' : 'disconnected');
+	mainWindow?.webContents.send('policy:changed', clientPolicy.getState());
+}
+
 async function toggleKillSwitch(enabled) {
 	store.set('tunnel.killSwitch', enabled);
 
@@ -636,6 +688,17 @@ async function initServices() {
 		{ clientVersion: require('../../package.json').version, clientType: 'community' }
 	);
 
+	// Client policies from the server (kill switch / auto-connect / autostart /
+	// split modes / settings + server lock), cached for offline use.
+	clientPolicy = new ClientPolicyService({
+		apiClient, store, log,
+		interval: store.get('app.configPollInterval', 300) * 1000,
+	});
+	apiClient.onPolicyVersion = (v) => { clientPolicy.noteVersion(v); };
+	clientPolicy.onChange(() => { applyClientPolicy().catch((err) => log.warn('Client policy apply failed:', err.message)); });
+	// Last known policy first (works offline)
+	await applyClientPolicy({ startup: true });
+
 	connectionMonitor = new ConnectionMonitor({
 		interval: store.get('app.checkInterval', 30) * 1000,
 		apiClient,
@@ -719,6 +782,7 @@ app.whenReady().then(async () => {
 		wgService,
 		apiClient,
 		killSwitch,
+		clientPolicy,
 		getUpdater: () => updater,
 		log,
 		connectTunnel,
@@ -753,6 +817,21 @@ app.whenReady().then(async () => {
 
 	// Fenster
 	createWindow();
+
+	// Ask the server for the current client policy (also polled, and on
+	// every heartbeat/permissions answer with a new policyVersion).
+	clientPolicy.start();
+
+	// Always-on policy: bring the tunnel back when it is down (e.g. after the
+	// reconnect loop gave up). Checked once a minute.
+	let alwaysOnAttempt = null;
+	setInterval(() => {
+		if (clientPolicy.getPolicy().autoConnect !== 'always_on') return;
+		if (tunnelState.connected || isReconnecting || alwaysOnAttempt) return;
+		if (!store.get('server.url', '')) return;
+		log.info('Always-on policy: tunnel is down, reconnecting');
+		alwaysOnAttempt = connectTunnel().catch(() => {}).finally(() => { alwaysOnAttempt = null; });
+	}, 60 * 1000).unref?.();
 
 	// Auto-Connect
 	if (store.get('tunnel.autoConnect', true)) {
@@ -823,6 +902,8 @@ app.whenReady().then(async () => {
 			path: process.execPath,
 			args: ['--minimized'],
 		});
+	} else if (clientPolicy.getPolicy().autostart === 'forbidden') {
+		setAutostart(false);
 	}
 
 	log.info('GateControl Client bereit');
