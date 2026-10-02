@@ -37,6 +37,7 @@ const {
   loadUpdatePublicKey,
   updateMenuItems,
   mandatoryNotice,
+  createSupportBundleSender,
 } = require('@gatecontrol/client-core');
 
 const { i18n } = require('@gatecontrol/client-core');
@@ -71,6 +72,7 @@ let dnsPolicy = null;
 let clientPolicy = null;
 let connectionMonitor = null;
 let updater = null;
+let supportBundle = null; // "Support-Paket senden" (core src/support/sender.js)
 let pendingUpdate = null;
 // Version for which the "Update erforderlich" notification was already shown
 // in this session (shown again on every app start while still required).
@@ -725,6 +727,8 @@ async function initServices() {
 			updateTray(trayState);
 			broadcastState(trayState);
 		},
+		// Admin asked for a support bundle → ask the user (core sender).
+		onSupportBundleRequest: (request) => supportBundle?.onServerRequest(request),
 		wgService,
 		log,
 	});
@@ -774,7 +778,7 @@ app.whenReady().then(async () => {
 	});
 
 	// IPC Handler registrieren (from core)
-	registerBaseHandlers(ipcMain, {
+	const ipcCtx = {
 		app,
 		dialog,
 		getMainWindow: () => mainWindow,
@@ -792,7 +796,16 @@ app.whenReady().then(async () => {
 		installUpdate,
 		getTunnelState: () => tunnelState,
 		wgConfigFile: WG_CONFIG_FILE,
-	});
+		edition: 'community',
+		// Result of a bundle the admin requested (the button shows its own status).
+		onSupportResult: (res) => {
+			if (!res || res.cancelled) return;
+			new Notification({ title: 'GateControl', body: res.success ? t('support.success') : res.error }).show();
+		},
+	};
+	// One sender for the Settings button and admin requests (connection monitor).
+	supportBundle = createSupportBundleSender(ipcCtx);
+	registerBaseHandlers(ipcMain, { ...ipcCtx, supportBundle });
 
 	// Fenster maximieren/wiederherstellen (eigene Titelleiste)
 	ipcMain.on('window:toggle-maximize', () => {
