@@ -1129,6 +1129,30 @@ $('#btn-check-update').addEventListener('click', async () => {
 	btn.disabled = false;
 });
 
+// Über → Support-Paket senden: main asks for confirmation (native dialog),
+// collects the redacted bundle and uploads it; cancelled → no message.
+function showSupportStatus(message, type) {
+	const st = $('#support-status');
+	st.hidden = false;
+	st.textContent = message;
+	st.className = `field-status ${type}`;
+	if (type === 'success') setTimeout(() => { st.hidden = true; }, 5000);
+}
+
+$('#support-send').addEventListener('click', async () => {
+	const btn = $('#support-send');
+	btn.disabled = true;
+	$('#support-status').hidden = true;
+	try {
+		const res = await window.gatecontrol.support.send();
+		if (res?.success) showSupportStatus(t('support.success'), 'success');
+		else if (!res?.cancelled) showSupportStatus(res?.error || t('support.failed', { error: '' }), 'error');
+	} catch (err) {
+		showSupportStatus(t('support.failed', { error: err?.message || '' }), 'error');
+	}
+	btn.disabled = false;
+});
+
 // ── Peer-Ablauf-Warnung ─────────────────────────────────
 peer.onExpiry((info) => {
 	const existing = $('#expiry-banner');
