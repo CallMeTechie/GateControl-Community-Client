@@ -521,3 +521,11 @@ html[data-theme="light"] .gc .icon-moon { display: block; }
 	.gc .page-pad { padding: 24px 24px 28px; }
 	.gc .set-grid { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* ── Client policy ("Vom Administrator festgelegt") ── */
+.policy-hint { margin-top: 4px; font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+.policy-hint::before { content: ""; width: 10px; height: 10px; flex-shrink: 0; border: 1.6px solid currentColor; border-radius: 2px; box-shadow: inset 0 -4px 0 -2px currentColor; }
+.policy-hint-block { margin: 0 0 12px; font-size: 13px; }
+.policy-banner { margin: 0 0 16px; padding: 10px 14px; border: 1px solid var(--line2); border-radius: 10px; background: var(--panel2); font-size: 13px; color: var(--muted); }
+.opt.policy-locked, .opt:disabled { opacity: .45; cursor: not-allowed; }
+.switch input:disabled + .slider { opacity: .45; cursor: not-allowed; }
