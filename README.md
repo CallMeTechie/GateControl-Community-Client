@@ -266,6 +266,15 @@ node -e "const c=require('crypto'),fs=require('fs');const {publicKey,privateKey}
 2. `update-signing.pub` in **beiden** Repos als `build/update-signing.pub` committen (ersetzt den Platzhalter).
 3. `gc-update-signing.pem` sicher offline aufbewahren (Passwort-Manager/Tresor) und vom Arbeitsrechner löschen. Geht der Schlüssel verloren, muss ein neuer Public Key ausgeliefert werden; installierte Clients mit dem alten Key nehmen danach signierte Updates erst nach einer manuellen Neuinstallation an.
 
+## Update-Kanal und Pflicht-Updates
+
+Welche Builds ein Client angeboten bekommt, legt der GateControl-Server fest (Einstellungen → Client-Updates bzw. pro Peer):
+
+- **Kanal** `stable` (Standard, neueste reguläre Version) oder `beta` (zusätzlich GitHub-Pre-Releases). Der Client zeigt den zugewiesenen Kanal unter Einstellungen → Über nur an; wählen kann er ihn nicht.
+- **Mindestversion** pro Produkt. Liegt die installierte Version darunter und ist ein geprüftes, neueres Update heruntergeladen, erscheint „Update erforderlich“: ein Hinweis ohne Schließen-Knopf auf der Übersicht, die Update-Karte in der Seitenleiste ohne „Später“, ein Eintrag ganz oben im Tray-Menü und eine Benachrichtigung (bei jedem App-Start erneut).
+- Kanal, Mindestversion und `mandatory` sind **nicht** signiert und dienen nur der Anzeige. Signatur, Produkt, Version (strikt neuer – kein Downgrade), Größe und SHA-256 werden immer geprüft; der Server kann so weder unsignierte Builds noch ältere Versionen ausrollen.
+- Ein Pflicht-Update wird **nicht automatisch** installiert: Der Installer beendet die App und trennt den VPN-Tunnel (Kill-Switch wird vorher gelöst). Das soll nicht ohne Zutun mitten in einer Sitzung passieren – der Nutzer startet die Installation über Hinweis, Karte oder Tray.
+
 ## Lizenz
 
 MIT
