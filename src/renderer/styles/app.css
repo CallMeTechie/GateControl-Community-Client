@@ -276,6 +276,10 @@ html[data-theme="light"] .gc .icon-moon { display: block; }
 .gc .update-card-head svg { color: var(--info); flex-shrink: 0; }
 .gc .update-card p { font-size: 13px; color: var(--muted); }
 .gc .update-card-actions { display: flex; gap: 6px; }
+/* Mandatory update (server: below the minimum version) — cannot be dismissed */
+.gc .update-card.mandatory { background: var(--err-bg); }
+.gc .update-card.mandatory .update-card-head svg { color: var(--err); }
+#update-required-slot:not(:empty) { margin-bottom: 14px; }
 
 .gc .device-info { padding: 0 12px; display: flex; flex-direction: column; gap: 2px; }
 .gc .device-info-label { font-size: 12px; color: var(--faint); }

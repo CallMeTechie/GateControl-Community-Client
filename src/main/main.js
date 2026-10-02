@@ -32,6 +32,8 @@ const {
   createTrayIcon,
   formatBytesShort,
   loadUpdatePublicKey,
+  updateMenuItems,
+  mandatoryNotice,
 } = require('@gatecontrol/client-core');
 
 const { i18n } = require('@gatecontrol/client-core');
@@ -66,6 +68,9 @@ let dnsPolicy = null;
 let connectionMonitor = null;
 let updater = null;
 let pendingUpdate = null;
+// Version for which the "Update erforderlich" notification was already shown
+// in this session (shown again on every app start while still required).
+let mandatoryNotifiedVersion = null;
 
 // ── State ────────────────────────────────────────────────────
 let tunnelState = {
@@ -131,6 +136,14 @@ function updateTray(state) {
 	}
 	tray.setToolTip(tooltip);
 
+	// Ready update: a mandatory one goes to the top, an optional one stays below
+	const updateItems = updateMenuItems({
+		update: pendingUpdate,
+		mandatory: !!updater?.isMandatory(),
+		t,
+		install: () => installUpdate(),
+	});
+
 	const contextMenu = Menu.buildFromTemplate([
 		{
 			label: `GateControl – ${statusText}`,
@@ -138,6 +151,7 @@ function updateTray(state) {
 			icon: getIcon(state),
 		},
 		{ type: 'separator' },
+		...updateItems.top,
 		{
 			label: state === 'connected' ? '⬤ ' + t('status.connected') : '○ ' + t('status.disconnected'),
 			enabled: false,
@@ -174,13 +188,7 @@ function updateTray(state) {
 				mainWindow?.webContents.send('navigate', 'settings');
 			},
 		},
-		...(pendingUpdate ? [
-			{ type: 'separator' },
-			{
-				label: t('tray.installUpdate', { version: pendingUpdate.version }),
-				click: () => installUpdate(),
-			},
-		] : []),
+		...updateItems.bottom,
 		...(portalUrl ? [
 			{ type: 'separator' },
 			{
@@ -537,11 +545,26 @@ async function checkPeerExpiry() {
 
 // ── Auto-Update UI ──────────────────────────────────────────
 function showUpdateNotification(release) {
-	showNotification(t('update.available', { version: release.version }), t('update.readyToInstall'));
+	if (release.mandatory) {
+		notifyMandatoryUpdate(release);
+	} else {
+		showNotification(t('update.available', { version: release.version }), t('update.readyToInstall'));
+	}
 	mainWindow?.webContents.send('update-ready', {
 		version: release.version,
 		releaseNotes: release.releaseNotes,
+		mandatory: release.mandatory === true,
+		channel: release.channel || null,
+		minVersion: release.minVersion || null,
 	});
+}
+
+// "Update erforderlich" notification, once per version and app session.
+function notifyMandatoryUpdate(info) {
+	if (!info?.version || mandatoryNotifiedVersion === info.version) return;
+	mandatoryNotifiedVersion = info.version;
+	const notice = mandatoryNotice(info, t);
+	showNotification(notice.title, notice.body);
 }
 
 async function installUpdate() {
@@ -610,7 +633,7 @@ async function initServices() {
 		store.get('server.apiKey', ''),
 		log,
 		store.get('server.peerId', '') || null,
-		{ clientVersion: require('../../package.json').version }
+		{ clientVersion: require('../../package.json').version, clientType: 'community' }
 	);
 
 	connectionMonitor = new ConnectionMonitor({
@@ -774,12 +797,23 @@ app.whenReady().then(async () => {
 		}, pollInterval);
 	}
 
-	// Auto-Update
+	// Auto-Update. Mandatory updates (server: below the minimum version) are
+	// never installed automatically: the installer ends the app and the
+	// tunnel, so the user starts it (banner, sidebar card, tray). The notice
+	// cannot be dismissed and is shown again on every start while required.
 	updater.start((release) => {
 		pendingUpdate = release;
-		log.info(`Update bereit: v${release.version}`);
+		log.info(`Update bereit: v${release.version}${release.mandatory ? ' (Pflicht-Update)' : ''}`);
 		updateTray(tunnelState.connected ? 'connected' : 'disconnected');
 		showUpdateNotification(release);
+	}, {
+		onPolicyChange: (policy) => {
+			mainWindow?.webContents.send('update:policy', policy);
+			updateTray(tunnelState.connected ? 'connected' : 'disconnected');
+			if (policy.mandatory && pendingUpdate) {
+				notifyMandatoryUpdate({ version: policy.version, minVersion: policy.minVersion });
+			}
+		},
 	});
 
 	// Autostart (nicht im E2E-Test)
