@@ -11,6 +11,11 @@ let activePermissions = { services: true, traffic: true, dns: true };
 
 // Portal URL (pushed from main on connect/disconnect)
 let currentPortalUrl = null;
+// Auto-update: ready update, "later" clicked, server policy (channel /
+// minimum version / mandatory, assigned by the server, read-only here).
+let pendingUpdate = null;
+let updateCardHidden = false;
+let updatePolicy = null;
 
 // ── DOM-Elemente ─────────────────────────────────────────
 const $ = (sel) => document.querySelector(sel);
@@ -221,6 +226,7 @@ function updateDOM() {
 	renderServices();
 	renderTraffic();
 	renderLogs();
+	renderUpdateCard();
 }
 
 // Locale Init
@@ -995,49 +1001,112 @@ window.addEventListener('resize', () => redrawBandwidthGraph());
 // Stats werden via IPC tunnel.onState gepusht (kein separater Poll nötig)
 
 // ── Auto-Update UI ──────────────────────────────────────
+const UPDATE_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"></path></svg>';
+
 function showUpdateBanner(info) {
+	pendingUpdate = info;
+	updateCardHidden = false;
+	renderUpdateCard();
+}
+
+function applyUpdatePolicy(policy) {
+	updatePolicy = policy || null;
+	renderUpdateCard();
+}
+
+function requiredText(st) {
+	return st.minVersion
+		? t('update.requiredDesc', { minVersion: st.minVersion, version: st.version })
+		: t('update.requiredDescNoMin', { version: st.version });
+}
+
+// Sidebar card (optional: "later" hides it; mandatory: no "later") and the
+// persistent "Update erforderlich" notice on the overview (no close button).
+function renderUpdateCard() {
+	const st = window.GCUpdateState.updateCardState(pendingUpdate, updatePolicy, updateCardHidden);
+
 	const existing = $('#update-banner');
 	if (existing) existing.remove();
+	if (st.visible) {
+		const card = document.createElement('div');
+		card.id = 'update-banner';
+		card.className = st.mandatory ? 'card update-card mandatory' : 'card update-card';
+		card.setAttribute('role', st.mandatory ? 'alert' : 'status');
 
-	const card = document.createElement('div');
-	card.id = 'update-banner';
-	card.className = 'card update-card';
-	card.setAttribute('role', 'status');
+		const head = document.createElement('div');
+		head.className = 'update-card-head';
+		head.innerHTML = UPDATE_ICON;
+		const title = document.createElement('span');
+		title.textContent = st.mandatory ? t('update.required') : t('update.available', { version: st.version });
+		head.appendChild(title);
+		card.appendChild(head);
 
-	const head = document.createElement('div');
-	head.className = 'update-card-head';
-	head.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"></path></svg>';
-	const title = document.createElement('span');
-	title.textContent = t('update.available', { version: info.version });
-	head.appendChild(title);
-	card.appendChild(head);
+		const text = document.createElement('p');
+		text.textContent = st.mandatory ? `${requiredText(st)} ${t('update.requiredTunnelHint')}` : t('update.readyToInstall');
+		card.appendChild(text);
 
-	const text = document.createElement('p');
-	text.textContent = t('update.readyToInstall');
-	card.appendChild(text);
+		const actions = document.createElement('div');
+		actions.className = 'update-card-actions';
 
-	const actions = document.createElement('div');
-	actions.className = 'update-card-actions';
+		const installBtn = document.createElement('button');
+		installBtn.type = 'button';
+		installBtn.className = 'btn btn-sec btn-sm';
+		installBtn.textContent = t('update.install');
+		installBtn.addEventListener('click', () => update.install());
+		actions.appendChild(installBtn);
 
-	const installBtn = document.createElement('button');
-	installBtn.type = 'button';
-	installBtn.className = 'btn btn-sec btn-sm';
-	installBtn.textContent = t('update.install');
-	installBtn.addEventListener('click', () => update.install());
-	actions.appendChild(installBtn);
+		if (st.dismissable) {
+			const laterBtn = document.createElement('button');
+			laterBtn.type = 'button';
+			laterBtn.className = 'btn btn-ghost btn-sm';
+			laterBtn.textContent = t('update.later');
+			laterBtn.addEventListener('click', () => { updateCardHidden = true; renderUpdateCard(); });
+			actions.appendChild(laterBtn);
+		}
 
-	const laterBtn = document.createElement('button');
-	laterBtn.type = 'button';
-	laterBtn.className = 'btn btn-ghost btn-sm';
-	laterBtn.textContent = t('update.later');
-	laterBtn.addEventListener('click', () => card.remove());
-	actions.appendChild(laterBtn);
+		card.appendChild(actions);
+		$('#update-slot').appendChild(card);
+	}
 
-	card.appendChild(actions);
-	$('#update-slot').appendChild(card);
+	const oldNotice = $('#update-required-banner');
+	if (oldNotice) oldNotice.remove();
+	if (st.mandatory) {
+		const notice = document.createElement('div');
+		notice.id = 'update-required-banner';
+		notice.className = 'notice notice-err';
+		notice.setAttribute('role', 'alert');
+		notice.innerHTML = UPDATE_ICON;
+		const body = document.createElement('div');
+		body.className = 'grow';
+		const strong = document.createElement('strong');
+		strong.textContent = t('update.required');
+		const desc = document.createElement('div');
+		desc.className = 'muted';
+		desc.textContent = `${requiredText(st)} ${t('update.requiredTunnelHint')}`;
+		body.appendChild(strong);
+		body.appendChild(desc);
+		notice.appendChild(body);
+		const installBtn = document.createElement('button');
+		installBtn.type = 'button';
+		installBtn.id = 'update-required-install';
+		installBtn.className = 'btn btn-sec';
+		installBtn.textContent = t('update.install');
+		installBtn.addEventListener('click', () => update.install());
+		notice.appendChild(installBtn);
+		$('#update-required-slot').appendChild(notice);
+	}
+
+	const channel = $('#update-channel');
+	if (channel) {
+		const ch = updatePolicy && updatePolicy.channel;
+		channel.textContent = t(window.GCUpdateState.channelLabelKey(ch));
+		channel.classList.toggle('c-warn', ch === 'beta');
+	}
 }
 
 update.onReady((info) => showUpdateBanner(info));
+update.onPolicy((policy) => applyUpdatePolicy(policy));
+update.policy().then((policy) => applyUpdatePolicy(policy)).catch(() => {});
 
 // Über → Nach Updates suchen
 $('#btn-check-update').addEventListener('click', async () => {
@@ -1047,6 +1116,7 @@ $('#btn-check-update').addEventListener('click', async () => {
 	result.textContent = t('ui.settings.checking');
 	try {
 		const info = await update.check();
+		update.policy().then((policy) => applyUpdatePolicy(policy)).catch(() => {});
 		if (info) {
 			result.textContent = t('update.available', { version: info.version });
 			showUpdateBanner(info);

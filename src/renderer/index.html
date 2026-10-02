@@ -95,6 +95,7 @@
 						</button>
 					</div>
 
+					<div id="update-required-slot"></div>
 					<div id="expiry-slot"></div>
 
 					<div class="ov-grid">
@@ -478,6 +479,13 @@
 								</div>
 								<button class="btn btn-sec" id="btn-check-update" type="button"><span data-i18n="update.checkBtn">Nach Updates suchen</span></button>
 							</section>
+							<section class="card set-card set-card-row">
+								<div class="grow">
+									<div class="set-row-title" data-i18n="update.channel">Update-Kanal</div>
+									<div class="set-row-desc" data-i18n="update.channelHint">Vom Server zugewiesen</div>
+								</div>
+								<span class="chip" id="update-channel">–</span>
+							</section>
 						</div>
 					</div>
 				</div>
@@ -497,6 +505,7 @@
 	</footer>
 </div>
 
+<script src="update-state.js"></script>
 <script src="renderer.js"></script>
 </body>
 </html>
