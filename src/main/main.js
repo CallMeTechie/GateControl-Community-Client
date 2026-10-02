@@ -6,6 +6,10 @@
  */
 
 const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, dialog, Notification, screen, nativeTheme } = require('electron');
+
+// E2E test hooks (unpackaged dev runs only, see e2e-guard.js). Must run
+// before any core service is required; a packaged build never loads them.
+const e2e = require('./e2e-guard').loadE2eHooks({ app });
 const path = require('path');
 
 const {
@@ -778,8 +782,8 @@ app.whenReady().then(async () => {
 		showUpdateNotification(release);
 	});
 
-	// Autostart
-	if (store.get('app.startWithWindows', true)) {
+	// Autostart (nicht im E2E-Test)
+	if (!e2e && store.get('app.startWithWindows', true)) {
 		app.setLoginItemSettings({
 			openAtLogin: true,
 			path: process.execPath,
