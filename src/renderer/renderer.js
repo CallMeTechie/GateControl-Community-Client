@@ -3,7 +3,7 @@
  * UI-Logik und State Management
  */
 
-const { tunnel, server, config, killSwitch, rdpAllow, autostart, logs, update, services, traffic, dns, shell, peer, permissions, onPortalUrl, getVersion, window: win, locale, policy: clientPolicy } = window.gatecontrol;
+const { tunnel, server, config, killSwitch, rdpAllow, autostart, logs, update, services, traffic, dns, shell, peer, permissions, onPortalUrl, getVersion, getDeviceId, window: win, locale, policy: clientPolicy } = window.gatecontrol;
 const { t } = window.gatecontrol.i18n;
 
 // Aktive Berechtigungen (werden beim Connect geladen)
@@ -100,6 +100,7 @@ const view = {
 	usagePeriod: 'last7d',
 	logLines: [],
 	version: '',
+	deviceId: undefined, // kurze Geräte-ID; null = nicht verfügbar
 };
 
 // ── Version ──────────────────────────────────────────────
@@ -110,9 +111,22 @@ getVersion().then(v => {
 	renderAboutVersion();
 });
 
+// ── Geräte-ID ────────────────────────────────────────────
+// Nur die Kurzform (erste 8 Hex des Machine-Fingerprints), wie auf der
+// Benutzer-Seite des Servers („Gerätebindung“). null = nicht verfügbar.
+Promise.resolve()
+	.then(() => getDeviceId())
+	.then(id => { view.deviceId = typeof id === 'string' && /^[0-9a-f]{8}$/.test(id) ? id : null; })
+	.catch(() => { view.deviceId = null; })
+	.then(() => renderAboutVersion());
+
 function renderAboutVersion() {
 	const about = $('#about-version');
 	if (about && view.version) about.textContent = t('ui.settings.version', { version: view.version });
+	const idEl = $('#about-device-id');
+	if (idEl && view.deviceId !== undefined) {
+		idEl.textContent = t('ui.settings.deviceId', { id: view.deviceId ? `${view.deviceId}…` : t('ui.settings.deviceIdUnavailable') });
+	}
 }
 
 // ── Theme ────────────────────────────────────────────────

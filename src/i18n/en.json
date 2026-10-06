@@ -83,6 +83,9 @@
       "pollIntervalDesc": "How often configuration and permissions are fetched from the server (30–3600 s).",
       "seconds": "seconds",
       "version": "Version {{ version }}",
+      "deviceId": "Device ID: {{ id }}",
+      "deviceIdUnavailable": "unavailable",
+      "deviceIdHint": "Lets your administrator match the device binding.",
       "checking": "Checking …"
     }
   }

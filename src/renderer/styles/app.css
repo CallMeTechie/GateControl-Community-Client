@@ -496,6 +496,8 @@ html[data-theme="light"] .gc .icon-moon { display: block; }
 .gc .about-card { padding: 24px; display: flex; align-items: center; gap: 20px; }
 .gc .about-icon { width: 64px; height: 64px; border-radius: 18px; background: var(--acc-bg); flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
 .gc .about-name { font-size: 22px; font-weight: 700; }
+.gc .about-device-id { margin-top: 2px; }
+.gc .about-device-hint { display: block; margin-top: 2px; }
 
 /* ── Statusleiste ────────────────────────────────────── */
 .gc .statusbar {

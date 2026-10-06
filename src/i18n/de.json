@@ -83,6 +83,9 @@
       "pollIntervalDesc": "Wie oft Konfiguration und Berechtigungen vom Server geladen werden (30–3600 s).",
       "seconds": "Sekunden",
       "version": "Version {{ version }}",
+      "deviceId": "Geräte-ID: {{ id }}",
+      "deviceIdUnavailable": "nicht verfügbar",
+      "deviceIdHint": "Damit ordnet der Administrator die Gerätebindung zu.",
       "checking": "Suche …"
     }
   }

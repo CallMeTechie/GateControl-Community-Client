@@ -14,6 +14,9 @@ registerTranslations('en', require('../i18n/en.json'));
 // Community meldet fertige Updates auf 'update-ready'.
 const api = createBridgeApi(ipcRenderer, i18n, { updateReadyChannel: 'update-ready' });
 
+// Kurze Geräte-ID (erste 8 Hex des Machine-Fingerprints) oder null.
+api.getDeviceId = () => ipcRenderer.invoke('app:device-id');
+
 // Fenster maximieren/wiederherstellen (eigene Titelleiste, main.js)
 api.window.toggleMaximize = () => ipcRenderer.send('window:toggle-maximize');
 

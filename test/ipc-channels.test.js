@@ -122,7 +122,49 @@ describe('Community IPC channels', { skip }, () => {
 		assert.deepEqual(await handlers['update:check'](), { version: '9.0.0' });
 	});
 
-	it('main.js keeps the kill-switch preference on quit/update', () => {
+	it('app:device-id hands the renderer only the 8-character short form', async () => {
+		const main = fs.readFileSync(path.join(ROOT, 'src', 'main', 'main.js'), 'utf8');
+		assert.match(main, /ipcMain\.handle\('app:device-id', \(\) => shortDeviceId\(getMachineFingerprint, log\)\)/);
+		const { shortDeviceId } = require('../src/main/device-id');
+		const fingerprint = 'a41f09c2' + '7e3b5d19c0aa48f2b6e1d3c5f7092a4b6c8d0e1f2a3b4c5d6e7f8091';
+		assert.equal(fingerprint.length, 64);
+		const handler = () => shortDeviceId(() => fingerprint, { warn() {} });
+
+		// The preload passes the main-process answer through unchanged.
+		let api = null;
+		const electron = {
+			contextBridge: { exposeInMainWorld: (_key, value) => { api = value; } },
+			ipcRenderer: {
+				invoke: (ch) => Promise.resolve(ch === 'app:device-id' ? handler() : undefined),
+				send() {}, on() {}, removeListener() {},
+			},
+		};
+		const realLoad = Module._load;
+		Module._load = function (request, ...rest) {
+			if (request === 'electron') return electron;
+			return realLoad.call(this, request, ...rest);
+		};
+		const file = path.join(ROOT, 'src', 'main', 'preload.js');
+		try {
+			delete require.cache[file];
+			require(file);
+		} finally {
+			Module._load = realLoad;
+		}
+		const seen = await api.getDeviceId();
+		assert.equal(seen, 'a41f09c2');
+		assert.match(seen, /^[0-9a-f]{8}$/);
+		assert.ok(!String(seen).includes(fingerprint.slice(8)));
+		// Nothing on the renderer side reads the fingerprint itself.
+		for (const f of ['src/main/preload.js', 'src/renderer/renderer.js']) {
+			const src = fs.readFileSync(path.join(ROOT, f), 'utf8');
+			assert.doesNotMatch(src, /getMachineFingerprint|machine-id|X-Machine-Fingerprint/, f);
+		}
+		// Failure path: null, no throw.
+		assert.equal(shortDeviceId(() => { throw new Error('reg query failed'); }, { warn() {} }), null);
+	});
+
+		it('main.js keeps the kill-switch preference on quit/update', () => {
 		const main = fs.readFileSync(path.join(ROOT, 'src', 'main', 'main.js'), 'utf8');
 		assert.doesNotMatch(main, /store\.set\('tunnel\.killSwitch',\s*false\)/);
 	});
