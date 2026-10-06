@@ -38,7 +38,10 @@ const {
   updateMenuItems,
   mandatoryNotice,
   createSupportBundleSender,
+  collectSupportBundle,
+  getMachineFingerprint,
 } = require('@gatecontrol/client-core');
+const { shortDeviceId, withDeviceId } = require('./device-id');
 
 const { i18n } = require('@gatecontrol/client-core');
 const { t, setLocale, getLocale, resolveLocale } = i18n;
@@ -804,8 +807,16 @@ app.whenReady().then(async () => {
 		},
 	};
 	// One sender for the Settings button and admin requests (connection monitor).
-	supportBundle = createSupportBundleSender(ipcCtx);
+	// The bundle carries the short device ID (client.deviceId) for the admin.
+	supportBundle = createSupportBundleSender(ipcCtx, {
+		collect: withDeviceId(collectSupportBundle, () => shortDeviceId(getMachineFingerprint, log)),
+	});
 	registerBaseHandlers(ipcMain, { ...ipcCtx, supportBundle });
+
+	// Geräte-ID für Einstellungen → Über: nur die Kurzform (erste 8 Hex des
+	// Machine-Fingerprints, wie auf der Benutzer-Seite des Servers), nie der
+	// volle Wert. null = nicht verfügbar.
+	ipcMain.handle('app:device-id', () => shortDeviceId(getMachineFingerprint, log));
 
 	// Fenster maximieren/wiederherstellen (eigene Titelleiste)
 	ipcMain.on('window:toggle-maximize', () => {

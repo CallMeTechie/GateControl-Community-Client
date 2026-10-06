@@ -28,6 +28,8 @@ test.describe('app start', () => {
     await expect(page.locator('#server-url')).toBeVisible();
     await openSettingsTab(page, 'about');
     await expect(page.locator('#btn-check-update')).toBeVisible();
+    // Short device ID (first 8 hex of the machine fingerprint) next to the version.
+    await expect(page.locator('#about-device-id')).toHaveText(/[0-9a-f]{8}…$/);
   });
 
   test('setup with an API key registers at the server', async ({ launchApp, mock }) => {
