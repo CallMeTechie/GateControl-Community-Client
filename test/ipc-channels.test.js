@@ -98,6 +98,7 @@ describe('Community IPC channels', { skip }, () => {
 			log: { info() {}, warn() {}, error() {}, debug() {} },
 			connectTunnel() {}, disconnectTunnel() {}, toggleKillSwitch() {}, toggleRdpAllow() {},
 			installUpdate() {}, getTunnelState: () => ({}),
+			openPortal: async () => true,
 			wgConfigFile: 'wg.conf',
 			...extra,
 		});
@@ -112,6 +113,12 @@ describe('Community IPC channels', { skip }, () => {
 		const handlers = register();
 		for (const ch of own) assert.equal(handlers[ch], undefined, `${ch} would be registered twice`);
 		for (const ch of invoked) assert.ok(handlers[ch] || own.includes(ch), ch);
+	});
+
+	it('main passes openPortal so the portal button gets a one-time login link', () => {
+		const main = fs.readFileSync(path.join(ROOT, 'src', 'main', 'main.js'), 'utf8');
+		assert.match(main, /openPortal: \(\) => openPortalSafe\(\)/);
+		assert.match(main, /createPortalOpener\(/);
 	});
 
 	it('update:check sees an updater that exists only after registration', async () => {
