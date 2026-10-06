@@ -3,7 +3,7 @@
  * UI-Logik und State Management
  */
 
-const { tunnel, server, config, killSwitch, rdpAllow, autostart, logs, update, services, traffic, dns, shell, peer, permissions, onPortalUrl, getVersion, getDeviceId, window: win, locale, policy: clientPolicy } = window.gatecontrol;
+const { tunnel, server, config, killSwitch, rdpAllow, autostart, logs, update, services, traffic, dns, shell, peer, permissions, onPortalUrl, portal, getVersion, getDeviceId, window: win, locale, policy: clientPolicy } = window.gatecontrol;
 const { t } = window.gatecontrol.i18n;
 
 // Aktive Berechtigungen (werden beim Connect geladen)
@@ -473,7 +473,8 @@ onPortalUrl?.((url) => {
 });
 
 el.portalBtn?.addEventListener('click', () => {
-	if (currentPortalUrl && /^https:\/\//i.test(currentPortalUrl)) shell.openExternal(currentPortalUrl);
+	// Main fetches a fresh one-time login link and falls back to the portal URL.
+	if (currentPortalUrl) portal.open();
 });
 
 // ── Kill-Switch Toggle ───────────────────────────────────

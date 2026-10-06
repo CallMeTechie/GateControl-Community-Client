@@ -108,10 +108,13 @@ const WG_CONFIG_DIR = path.join(app.getPath('userData'), 'wireguard');
 const WG_CONFIG_FILE = path.join(WG_CONFIG_DIR, 'gatecontrol0.conf');
 
 // ── Helpers ──────────────────────────────────────────────────
+// Opens the portal (https only). Asks the server for a fresh one-time login
+// link right before every open and falls back to the plain portal URL
+// (core utils/portal.js). Used by auto-open, tray and the "Portal öffnen" button.
 function openPortalSafe() {
-	if (portalUrl && /^https:\/\//i.test(portalUrl)) {
-		require('electron').shell.openExternal(portalUrl).catch(() => {});
-	}
+	return createPortalOpener({ apiClient, getPortalUrl: () => portalUrl, log })
+		.open()
+		.catch(() => false);
 }
 
 // ── Tray Icon (Sun/Star design, drawn by core) ──────────────
@@ -797,6 +800,7 @@ app.whenReady().then(async () => {
 		toggleKillSwitch,
 		toggleRdpAllow,
 		installUpdate,
+		openPortal: () => openPortalSafe(),
 		getTunnelState: () => tunnelState,
 		wgConfigFile: WG_CONFIG_FILE,
 		edition: 'community',
