@@ -1,6 +1,6 @@
 {
   "name": "gatecontrol-client",
-  "version": "1.20.3",
+  "version": "1.28.0",
   "description": "GateControl WireGuard Client für Windows",
   "main": "src/main/main.js",
   "author": "GateControl",
@@ -12,20 +12,21 @@
     "build:portable": "electron-builder --win portable",
     "build:installer": "electron-builder --win nsis",
     "postinstall": "electron-builder install-app-deps",
-    "test": "node -e \"const fs=require('fs'),path=require('path'),{execFileSync}=require('child_process');let ok=0,fail=0;const check=d=>{for(const f of fs.readdirSync(d,{withFileTypes:true})){const p=path.join(d,f.name);if(f.isDirectory()&&f.name!=='node_modules')check(p);else if(f.name.endsWith('.js')){try{execFileSync(process.execPath,['--check',p]);ok++}catch(e){console.error('FAIL:',p);fail++}}}};check('src');console.log(ok+' files OK'+(fail?' '+fail+' FAILED':''));if(fail)process.exit(1)\""
+    "syntax": "node -e \"const fs=require('fs'),path=require('path'),{execFileSync}=require('child_process');let ok=0,fail=0;const check=d=>{for(const f of fs.readdirSync(d,{withFileTypes:true})){const p=path.join(d,f.name);if(f.isDirectory()&&f.name!=='node_modules')check(p);else if(f.name.endsWith('.js')){try{execFileSync(process.execPath,['--check',p]);ok++}catch(e){console.error('FAIL:',p);fail++}}}};check('src');console.log(ok+' files OK'+(fail?' '+fail+' FAILED':''));if(fail)process.exit(1)\"",
+    "test": "npm run syntax && node --test \"test/**/*.test.js\"",
+    "core:fetch": "bash scripts/fetch-core.sh",
+    "core:bump": "bash scripts/bump-core.sh",
+    "test:e2e": "playwright test -c test/e2e/playwright.config.js"
   },
   "dependencies": {
     "@gatecontrol/client-core": "file:../gatecontrol-client-core"
   },
   "devDependencies": {
+    "@playwright/test": "1.63.0",
     "cross-env": "^7.0.3",
-    "electron": "^41.2.0",
-    "electron-builder": "^26.8.1"
-  },
-  "overrides": {
-    "@xmldom/xmldom": "0.8.13",
-    "fast-uri": "3.1.2",
-    "ip-address": "10.1.1"
+    "electron": "^44.5.1",
+    "electron-builder": "^26.17.0",
+    "selfsigned": "5.5.0"
   },
   "build": {
     "appId": "com.gatecontrol.client",
@@ -62,7 +63,8 @@
       "installerHeaderIcon": "build/icon.ico",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "GateControl"
+      "shortcutName": "GateControl",
+      "include": "scripts/installer.nsh"
     },
     "portable": {
       "artifactName": "${productName} ${version}.exe"
@@ -83,8 +85,13 @@
         "from": "resources/",
         "to": "resources/",
         "filter": [
-          "**/*"
+          "**/*",
+          "!bin/*.dll"
         ]
+      },
+      {
+        "from": "build/update-signing.pub",
+        "to": "update-signing.pub"
       }
     ],
     "publish": null

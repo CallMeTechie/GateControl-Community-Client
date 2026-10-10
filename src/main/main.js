@@ -5,7 +5,11 @@
  * All business logic lives in the core package.
  */
 
-const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, dialog, Notification, screen } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, dialog, Notification, screen, nativeTheme } = require('electron');
+
+// E2E test hooks (unpackaged dev runs only, see e2e-guard.js). Must run
+// before any core service is required; a packaged build never loads them.
+const e2e = require('./e2e-guard').loadE2eHooks({ app });
 const path = require('path');
 
 const {
@@ -16,10 +20,28 @@ const {
   ConnectionMonitor,
   Updater,
   DnsPolicy,
+  ClientPolicyService,
+  clientPolicy: clientPolicyUtil,
+  applyPolicyToStore,
   createLogger,
   createStores,
   registerBaseHandlers,
+  validateWgConfig,
+  // Shared helpers (unit-tested in core): pure tunnel/portal logic,
+  // kill-switch startup recovery, tray icon, update key loader.
+  reconnectDelay,
+  shouldOpenPortal,
+  recoverKillSwitch,
+  createTrayIcon,
+  formatBytesShort,
+  loadUpdatePublicKey,
+  updateMenuItems,
+  mandatoryNotice,
+  createSupportBundleSender,
+  collectSupportBundle,
+  getMachineFingerprint,
 } = require('@gatecontrol/client-core');
+const { shortDeviceId, withDeviceId } = require('./device-id');
 
 const { i18n } = require('@gatecontrol/client-core');
 const { t, setLocale, getLocale, resolveLocale } = i18n;
@@ -28,9 +50,12 @@ const { t, setLocale, getLocale, resolveLocale } = i18n;
 const log = createLogger();
 
 // ── Single Instance Lock ─────────────────────────────────────
+// app.quit() is asynchronous — without exiting here the second instance
+// would go on to create stores, services and IPC handlers.
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
-	app.quit();
+	app.exit(0);
+	process.exit(0);
 }
 
 // ── Store ────────────────────────────────────────────────────
@@ -47,9 +72,14 @@ let killSwitch = null;
 let rdpAllow = null;
 let apiClient = null;
 let dnsPolicy = null;
+let clientPolicy = null;
 let connectionMonitor = null;
 let updater = null;
+let supportBundle = null; // "Support-Paket senden" (core src/support/sender.js)
 let pendingUpdate = null;
+// Version for which the "Update erforderlich" notification was already shown
+// in this session (shown again on every app start while still required).
+let mandatoryNotifiedVersion = null;
 
 // ── State ────────────────────────────────────────────────────
 let tunnelState = {
@@ -64,6 +94,11 @@ let tunnelState = {
 };
 let isReconnecting = false;
 
+// ── Portal state ─────────────────────────────────────────────
+let portalUrl = null;
+let autoOpenPortal = false;
+let portalOpenedSince = null;
+
 // ── Pfade ────────────────────────────────────────────────────
 const RESOURCES_PATH = app.isPackaged
 	? path.join(process.resourcesPath, 'resources')
@@ -73,75 +108,18 @@ const WG_CONFIG_DIR = path.join(app.getPath('userData'), 'wireguard');
 const WG_CONFIG_FILE = path.join(WG_CONFIG_DIR, 'gatecontrol0.conf');
 
 // ── Helpers ──────────────────────────────────────────────────
-function formatBytesShort(bytes) {
-	if (!bytes || bytes <= 0) return '0 B';
-	const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-	const i = Math.floor(Math.log(bytes) / Math.log(1024));
-	return (bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0) + ' ' + units[i];
+// Opens the portal (https only). Asks the server for a fresh one-time login
+// link right before every open and falls back to the plain portal URL
+// (core utils/portal.js). Used by auto-open, tray and the "Portal öffnen" button.
+function openPortalSafe() {
+	return createPortalOpener({ apiClient, getPortalUrl: () => portalUrl, log })
+		.open()
+		.catch(() => false);
 }
 
-// ── Tray Icon (Sun/Star design — circle + 8 rays) ───────────
+// ── Tray Icon (Sun/Star design, drawn by core) ──────────────
 function getIcon(state) {
-	const color = state === 'connected' ? [0x22, 0xC5, 0x5E]   // green
-		: state === 'connecting' ? [0xF5, 0x9E, 0x0B]             // amber
-		: [0xEF, 0x44, 0x44];                                      // red
-
-	const size = 32;
-	const buf = Buffer.alloc(size * size * 4, 0);
-	const cx = size / 2;
-	const cy = size / 2;
-
-	function setPixel(px, py) {
-		const x = Math.round(px);
-		const y = Math.round(py);
-		if (x < 0 || x >= size || y < 0 || y >= size) return;
-		const i = (y * size + x) * 4;
-		buf[i] = color[0]; buf[i + 1] = color[1]; buf[i + 2] = color[2]; buf[i + 3] = 255;
-	}
-
-	// Ring
-	const ringR = 5.0;
-	const ringThick = 1.8;
-	for (let a = 0; a < 360; a += 1) {
-		const rad = a * Math.PI / 180;
-		for (let t = -ringThick / 2; t <= ringThick / 2; t += 0.4) {
-			setPixel(cx + (ringR + t) * Math.cos(rad), cy + (ringR + t) * Math.sin(rad));
-		}
-	}
-
-	// Center dot
-	for (let dx = -1.5; dx <= 1.5; dx += 0.5) {
-		for (let dy = -1.5; dy <= 1.5; dy += 0.5) {
-			if (dx * dx + dy * dy <= 2.0) setPixel(cx + dx, cy + dy);
-		}
-	}
-
-	// 8 rays
-	const rayInner = 8.5;
-	const rayOuter = 13.5;
-	const rayThick = 2.0;
-	for (let i = 0; i < 8; i++) {
-		const angle = i * 45 * Math.PI / 180;
-		const cos = Math.cos(angle);
-		const sin = Math.sin(angle);
-		const perpCos = Math.cos(angle + Math.PI / 2);
-		const perpSin = Math.sin(angle + Math.PI / 2);
-		for (let d = rayInner; d <= rayOuter; d += 0.3) {
-			for (let t = -rayThick / 2; t <= rayThick / 2; t += 0.4) {
-				setPixel(cx + d * cos + t * perpCos, cy + d * sin + t * perpSin);
-			}
-		}
-		for (let dx = -rayThick / 2; dx <= rayThick / 2; dx += 0.4) {
-			for (let dy = -rayThick / 2; dy <= rayThick / 2; dy += 0.4) {
-				if (dx * dx + dy * dy <= (rayThick / 2) * (rayThick / 2)) {
-					setPixel(cx + rayInner * cos + dx * perpCos + dy * cos, cy + rayInner * sin + dx * perpSin + dy * sin);
-					setPixel(cx + rayOuter * cos + dx * perpCos + dy * cos, cy + rayOuter * sin + dx * perpSin + dy * sin);
-				}
-			}
-		}
-	}
-
-	return nativeImage.createFromBuffer(buf, { width: size, height: size });
+	return createTrayIcon(nativeImage, state);
 }
 
 function updateTray(state) {
@@ -170,6 +148,14 @@ function updateTray(state) {
 	}
 	tray.setToolTip(tooltip);
 
+	// Ready update: a mandatory one goes to the top, an optional one stays below
+	const updateItems = updateMenuItems({
+		update: pendingUpdate,
+		mandatory: !!updater?.isMandatory(),
+		t,
+		install: () => installUpdate(),
+	});
+
 	const contextMenu = Menu.buildFromTemplate([
 		{
 			label: `GateControl – ${statusText}`,
@@ -177,6 +163,7 @@ function updateTray(state) {
 			icon: getIcon(state),
 		},
 		{ type: 'separator' },
+		...updateItems.top,
 		{
 			label: state === 'connected' ? '⬤ ' + t('status.connected') : '○ ' + t('status.disconnected'),
 			enabled: false,
@@ -192,13 +179,16 @@ function updateTray(state) {
 		{ type: 'separator' },
 		{
 			label: state === 'connected' ? t('action.disconnect') : t('action.connect'),
+			// Always-on policy: no manual disconnect
+			enabled: !(state === 'connected' && policyLocks().disconnect),
 			click: () => state === 'connected' ? disconnectTunnel() : connectTunnel(),
 		},
 		{ type: 'separator' },
 		{
-			label: t('killswitch.label'),
+			label: policyLocks().killSwitch ? `${t('killswitch.label')} (${t('policy.lockedHint')})` : t('killswitch.label'),
 			type: 'checkbox',
 			checked: store.get('tunnel.killSwitch', false),
+			enabled: !policyLocks().killSwitch,
 			click: (item) => toggleKillSwitch(item.checked),
 		},
 		{ type: 'separator' },
@@ -213,11 +203,12 @@ function updateTray(state) {
 				mainWindow?.webContents.send('navigate', 'settings');
 			},
 		},
-		...(pendingUpdate ? [
+		...updateItems.bottom,
+		...(portalUrl ? [
 			{ type: 'separator' },
 			{
-				label: t('tray.installUpdate', { version: pendingUpdate.version }),
-				click: () => installUpdate(),
+				label: t('portal.open'),
+				click: () => openPortalSafe(),
 			},
 		] : []),
 		{ type: 'separator' },
@@ -232,16 +223,27 @@ function updateTray(state) {
 
 // ── Fenster ──────────────────────────────────────────────────
 function createWindow() {
-	const dpi = screen.getPrimaryDisplay().scaleFactor;
+	// Sidebar layout (redesign): default 1040×720 DIP, resizable down to a
+	// compact icon-rail layout at 760×560. Size is remembered in DIP.
+	const DEFAULT_SIZE = { width: 1040, height: 720 };
+	const MIN_SIZE = { width: 760, height: 560 };
+	const saved = store.get('app.windowSize', null);
+	const work = screen.getPrimaryDisplay().workAreaSize;
+	const clamp = (v, min, max) => Math.max(min, Math.min(max, Math.round(v)));
+	const width = clamp(saved?.width || DEFAULT_SIZE.width, MIN_SIZE.width, Math.max(MIN_SIZE.width, work.width));
+	const height = clamp(saved?.height || DEFAULT_SIZE.height, MIN_SIZE.height, Math.max(MIN_SIZE.height, work.height));
+
+	const themeSetting = store.get('app.theme', 'dark');
+	const isLight = themeSetting === 'light' || (themeSetting === 'system' && !nativeTheme.shouldUseDarkColors);
+
 	mainWindow = new BrowserWindow({
-		width: Math.round(590 / dpi),
-		minWidth: Math.round(590 / dpi),
-		maxWidth: Math.round(590 / dpi),
-		height: Math.round(store.get('app.windowHeight', 1280) / dpi),
-		minHeight: Math.round(500 / dpi),
+		width,
+		height,
+		minWidth: MIN_SIZE.width,
+		minHeight: MIN_SIZE.height,
 		resizable: true,
 		frame: false,
-		backgroundColor: store.get('app.theme', 'dark') === 'light' ? '#F8F9FB' : '#0F1117',
+		backgroundColor: isLight ? '#F3F5F8' : '#0D1015',
 		titleBarStyle: 'hidden',
 		show: false,
 		icon: app.isPackaged
@@ -264,8 +266,9 @@ function createWindow() {
 	});
 
 	mainWindow.on('resize', () => {
-		const [, height] = mainWindow.getSize();
-		store.set('app.windowHeight', Math.round(height * dpi));
+		if (mainWindow.isMaximized() || mainWindow.isFullScreen()) return;
+		const [w, h] = mainWindow.getSize();
+		store.set('app.windowSize', { width: w, height: h });
 	});
 
 	mainWindow.on('close', (e) => {
@@ -306,14 +309,29 @@ async function connectTunnel() {
 		const apiKey = store.get('server.apiKey');
 
 		if (serverUrl && apiKey) {
+			let fetchedConfig = null;
 			try {
-				const config = await apiClient.fetchConfig();
-				if (config) {
-					await wgService.writeConfig(WG_CONFIG_FILE, config);
-					log.info('Konfiguration vom Server aktualisiert');
-				}
+				fetchedConfig = await apiClient.fetchConfig();
 			} catch (err) {
 				log.warn('Config-Abruf fehlgeschlagen, nutze lokale Config:', err.message);
+			}
+			if (fetchedConfig) {
+				// Fail-closed: validate before overwriting the existing config.
+				// A bad fetch must NOT clobber a good local config; abort the connect.
+				const validation = validateWgConfig(fetchedConfig);
+				if (!validation.ok) {
+					const msg = 'Invalid WireGuard config: ' + validation.errors.join(', ');
+					log.error('Config-Update abgelehnt, behalte lokale Config: ' + msg);
+					updateTray('disconnected');
+					broadcastState('error', msg);
+					showNotification(t('notify.connectionError'), msg);
+					return;
+				}
+				if (validation.warnings && validation.warnings.length > 0) {
+					log.warn('Config-Warnungen: ' + validation.warnings.join(', '));
+				}
+				await wgService.writeConfig(WG_CONFIG_FILE, fetchedConfig);
+				log.info('Konfiguration vom Server aktualisiert');
 			}
 		}
 
@@ -329,6 +347,22 @@ async function connectTunnel() {
 
 		updateTray('connected');
 		broadcastState('connected');
+
+		// ── Portal auto-open (Task 7) ────────────────────────────
+		async function refreshPortalUrl() {
+			await apiClient.getPermissions();
+			portalUrl = apiClient.portalUrl;
+			autoOpenPortal = apiClient.autoOpenPortal;
+			// ponytail: getPermissions() never throws (catches internally); on failure
+			// apiClient.portalUrl retains its previous value (preserve-last-known).
+			if (!portalUrl) log.warn('portal url fetch returned empty');
+		}
+		await refreshPortalUrl();
+		if (!portalUrl) { await new Promise(r => setTimeout(r, 1500)); await refreshPortalUrl(); }
+		updateTray('connected'); // refresh so portal item appears
+		if (mainWindow) mainWindow.webContents.send('portal-url', portalUrl);
+		const since = tunnelState.connectedSince ? tunnelState.connectedSince.getTime() : Date.now();
+		if (shouldOpenPortal({ portalUrl, autoOpenPortal, connectedSince: since, lastOpenedSince: portalOpenedSince })) { portalOpenedSince = since; openPortalSafe(); }
 
 		connectionMonitor.start();
 
@@ -385,7 +419,7 @@ async function disconnectTunnel() {
 
 		await wgService.disconnect();
 
-		if (store.get('tunnel.killSwitch', false)) {
+		if (killSwitch.enabled || store.get('tunnel.killSwitch', false)) {
 			await killSwitch.disable();
 			log.info('Kill-Switch deaktiviert');
 		}
@@ -394,6 +428,10 @@ async function disconnectTunnel() {
 		tunnelState.connectedSince = null;
 		tunnelState.rxBytes = 0;
 		tunnelState.txBytes = 0;
+
+		portalOpenedSince = null;
+		portalUrl = null;
+		if (mainWindow) mainWindow.webContents.send('portal-url', null);
 
 		updateTray('disconnected');
 		broadcastState('disconnected');
@@ -404,6 +442,51 @@ async function disconnectTunnel() {
 	} catch (err) {
 		log.error('Fehler beim Trennen:', err);
 	}
+}
+
+// ── Client-Richtlinie ────────────────────────────────────────
+function policyLocks() {
+	return clientPolicyUtil.locks(clientPolicy ? clientPolicy.getPolicy() : null);
+}
+
+function setAutostart(enabled) {
+	if (e2e) return;
+	app.setLoginItemSettings({
+		openAtLogin: enabled,
+		path: process.execPath,
+		args: ['--minimized'],
+	});
+}
+
+/**
+ * Apply the (cached or freshly fetched) client policy: force the store
+ * values and act on what changed. Runs at start-up with the cached policy
+ * (offline-safe) and on every policy change.
+ */
+async function applyClientPolicy({ startup = false } = {}) {
+	if (!clientPolicy) return;
+	const policy = clientPolicy.getPolicy();
+	const changed = applyPolicyToStore(store, policy, log);
+	if (Object.keys(changed).length) log.info(`Client policy applied: ${JSON.stringify(changed)}`);
+
+	if (changed['tunnel.killSwitch'] === true && tunnelState.connected && !killSwitch.enabled) {
+		try { await killSwitch.enable(WG_CONFIG_FILE); } catch (err) { log.error('Kill-switch (policy) failed:', err.message); }
+	}
+	if (Object.prototype.hasOwnProperty.call(changed, 'app.startWithWindows')) {
+		try { setAutostart(changed['app.startWithWindows']); } catch (err) { log.warn('Autostart (policy) failed:', err.message); }
+	}
+	if (!startup) {
+		const hasServer = store.get('server.url', '') !== '';
+		if (Object.prototype.hasOwnProperty.call(changed, 'tunnel.splitTunnel') && tunnelState.connected && !isReconnecting) {
+			await disconnectTunnel();
+			await connectTunnel();
+		} else if (policy.autoConnect !== 'user' && hasServer && !tunnelState.connected && !isReconnecting) {
+			connectTunnel().catch(() => {});
+		}
+	}
+	broadcastState(tunnelState.connected ? 'connected' : 'disconnected');
+	updateTray(tunnelState.connected ? 'connected' : 'disconnected');
+	mainWindow?.webContents.send('policy:changed', clientPolicy.getState());
 }
 
 async function toggleKillSwitch(enabled) {
@@ -442,10 +525,9 @@ async function handleDisconnect() {
 	broadcastState('reconnecting');
 
 	const maxRetries = 10;
-	const baseDelay = 2000;
 
 	for (let i = 0; i < maxRetries; i++) {
-		const delay = Math.min(baseDelay * Math.pow(1.5, i), 60000);
+		const delay = reconnectDelay(i);
 		log.info(`Reconnect-Versuch ${i + 1}/${maxRetries} in ${delay}ms...`);
 
 		await new Promise(r => setTimeout(r, delay));
@@ -523,15 +605,35 @@ async function checkPeerExpiry() {
 
 // ── Auto-Update UI ──────────────────────────────────────────
 function showUpdateNotification(release) {
-	showNotification(t('update.available', { version: release.version }), t('update.readyToInstall'));
+	if (release.mandatory) {
+		notifyMandatoryUpdate(release);
+	} else {
+		showNotification(t('update.available', { version: release.version }), t('update.readyToInstall'));
+	}
 	mainWindow?.webContents.send('update-ready', {
 		version: release.version,
 		releaseNotes: release.releaseNotes,
+		mandatory: release.mandatory === true,
+		channel: release.channel || null,
+		minVersion: release.minVersion || null,
 	});
 }
 
+// "Update erforderlich" notification, once per version and app session.
+function notifyMandatoryUpdate(info) {
+	if (!info?.version || mandatoryNotifiedVersion === info.version) return;
+	mandatoryNotifiedVersion = info.version;
+	const notice = mandatoryNotice(info, t);
+	showNotification(notice.title, notice.body);
+}
+
 async function installUpdate() {
-	if (!pendingUpdate || !updater?.isUpdateReady()) return false;
+	// Only the updater's verified state counts: a manual check may leave
+	// the cached release info unset or without an installer path.
+	if (!updater?.isUpdateReady()) {
+		log.warn('Update-Installation angefordert, aber kein geprüftes Update bereit');
+		return false;
+	}
 
 	log.info('Update-Installation gestartet...');
 
@@ -539,14 +641,18 @@ async function installUpdate() {
 		await disconnectTunnel();
 	}
 
-	if (store.get('tunnel.killSwitch', false)) {
+	// Lift the firewall rules for the installer, but keep the user's
+	// kill-switch preference — the new version re-enables it on connect.
+	if (killSwitch?.enabled) {
 		try {
 			await killSwitch.disable();
-			store.set('tunnel.killSwitch', false);
-		} catch {}
+		} catch (err) {
+			log.error('Kill-Switch konnte vor dem Update nicht deaktiviert werden:', err.message);
+		}
 	}
 
-	updater.install();
+	// Re-hashes the installer before starting it.
+	if (!updater.install()) return false;
 
 	setTimeout(() => quitApp(), 1500);
 	return true;
@@ -580,15 +686,26 @@ async function initServices() {
 	}
 
 	wgService = new WireGuardService(log, { resourcesPath: RESOURCES_PATH });
-	killSwitch = new KillSwitch(log);
-	rdpAllow = new RdpAllow(log);
+	killSwitch = new KillSwitch(log, { edition: 'community' });
+	rdpAllow = new RdpAllow(log, { edition: 'community' });
 	apiClient = new ApiClient(
 		store.get('server.url', ''),
 		store.get('server.apiKey', ''),
 		log,
 		store.get('server.peerId', '') || null,
-		{ clientVersion: require('../../package.json').version }
+		{ clientVersion: require('../../package.json').version, clientType: 'community' }
 	);
+
+	// Client policies from the server (kill switch / auto-connect / autostart /
+	// split modes / settings + server lock), cached for offline use.
+	clientPolicy = new ClientPolicyService({
+		apiClient, store, log,
+		interval: store.get('app.configPollInterval', 300) * 1000,
+	});
+	apiClient.onPolicyVersion = (v) => { clientPolicy.noteVersion(v); };
+	clientPolicy.onChange(() => { applyClientPolicy().catch((err) => log.warn('Client policy apply failed:', err.message)); });
+	// Last known policy first (works offline)
+	await applyClientPolicy({ startup: true });
 
 	connectionMonitor = new ConnectionMonitor({
 		interval: store.get('app.checkInterval', 30) * 1000,
@@ -616,6 +733,8 @@ async function initServices() {
 			updateTray(trayState);
 			broadcastState(trayState);
 		},
+		// Admin asked for a support bundle → ask the user (core sender).
+		onSupportBundleRequest: (request) => supportBundle?.onServerRequest(request),
 		wgService,
 		log,
 	});
@@ -634,36 +753,38 @@ app.whenReady().then(async () => {
 
 	await initServices();
 
-	// Kill-Switch Cleanup
-	try {
-		const wasActive = await killSwitch.isActive();
-		if (wasActive && !store.get('tunnel.killSwitch', false)) {
-			log.warn('Verwaiste Kill-Switch Regeln gefunden — bereinige...');
-			await killSwitch.disable();
-		} else if (wasActive) {
-			log.info('Kill-Switch war beim letzten Beenden aktiv — Regeln bleiben bestehen');
-			killSwitch.enabled = true;
-		}
-	} catch (err) {
-		log.debug('Kill-Switch Cleanup:', err.message);
-	}
+	// Kill-Switch Cleanup: Reste eines Absturzes entfernen und die vorher
+	// gesicherte Firewall-Policy wiederherstellen (Tunnel ist nach dem
+	// Start nie aktiv; bei Einstellung "an" aktiviert connectTunnel ihn neu)
+	await recoverKillSwitch({ killSwitch, store, wgService, log });
 
-	// RDP Allow Cleanup
+	// RDP Allow mit der Einstellung abgleichen: verwaiste Regel entfernen,
+	// aktive übernehmen bzw. wiederherstellen. Die alte gemeinsame Regel
+	// GateControl_RDP_Allow_In_3389 entfernt der Core nur, wenn die
+	// Pro-Edition weder installiert ist noch läuft.
 	try {
-		const rdpWasActive = await rdpAllow.isActive();
-		if (rdpWasActive && !store.get('tunnel.rdpAllow', false)) {
-			log.warn('Verwaiste RDP-Allow Regeln gefunden — bereinige...');
-			await rdpAllow.disable();
-		} else if (rdpWasActive) {
-			log.info('RDP Allow war beim letzten Beenden aktiv — Regeln bleiben bestehen');
-			rdpAllow.enabled = true;
-		}
+		const rdpWanted = store.get('tunnel.rdpAllow', false);
+		const rdpActive = await rdpAllow.reconcile({ wanted: rdpWanted, configPath: WG_CONFIG_FILE });
+		if (rdpWanted && !rdpActive) store.set('tunnel.rdpAllow', false);
 	} catch (err) {
 		log.debug('RDP Allow Cleanup:', err.message);
 	}
 
+	// Updater before the IPC handlers: update:check and the post-setup
+	// updater.configure() need it (started further below).
+	// Nur signierte Updates: ohne echten Public Key bleibt der Updater aus.
+	updater = new Updater({
+		serverUrl: store.get('server.url', ''),
+		apiKey: store.get('server.apiKey', ''),
+		log,
+		clientType: 'community',
+		product: 'community',
+		// Ed25519-Public-Key für signierte Updates (build/update-signing.pub).
+		publicKey: loadUpdatePublicKey({ appRoot: path.join(__dirname, '..', '..') }),
+	});
+
 	// IPC Handler registrieren (from core)
-	registerBaseHandlers(ipcMain, {
+	const ipcCtx = {
 		app,
 		dialog,
 		getMainWindow: () => mainWindow,
@@ -671,15 +792,41 @@ app.whenReady().then(async () => {
 		wgService,
 		apiClient,
 		killSwitch,
-		updater,
+		clientPolicy,
+		getUpdater: () => updater,
 		log,
 		connectTunnel,
 		disconnectTunnel,
 		toggleKillSwitch,
 		toggleRdpAllow,
 		installUpdate,
+		openPortal: () => openPortalSafe(),
 		getTunnelState: () => tunnelState,
 		wgConfigFile: WG_CONFIG_FILE,
+		edition: 'community',
+		// Result of a bundle the admin requested (the button shows its own status).
+		onSupportResult: (res) => {
+			if (!res || res.cancelled) return;
+			new Notification({ title: 'GateControl', body: res.success ? t('support.success') : res.error }).show();
+		},
+	};
+	// One sender for the Settings button and admin requests (connection monitor).
+	// The bundle carries the short device ID (client.deviceId) for the admin.
+	supportBundle = createSupportBundleSender(ipcCtx, {
+		collect: withDeviceId(collectSupportBundle, () => shortDeviceId(getMachineFingerprint, log)),
+	});
+	registerBaseHandlers(ipcMain, { ...ipcCtx, supportBundle });
+
+	// Geräte-ID für Einstellungen → Über: nur die Kurzform (erste 8 Hex des
+	// Machine-Fingerprints, wie auf der Benutzer-Seite des Servers), nie der
+	// volle Wert. null = nicht verfügbar.
+	ipcMain.handle('app:device-id', () => shortDeviceId(getMachineFingerprint, log));
+
+	// Fenster maximieren/wiederherstellen (eigene Titelleiste)
+	ipcMain.on('window:toggle-maximize', () => {
+		if (!mainWindow) return;
+		if (mainWindow.isMaximized()) mainWindow.unmaximize();
+		else mainWindow.maximize();
 	});
 
 	// Locale IPC Handler
@@ -698,6 +845,21 @@ app.whenReady().then(async () => {
 
 	// Fenster
 	createWindow();
+
+	// Ask the server for the current client policy (also polled, and on
+	// every heartbeat/permissions answer with a new policyVersion).
+	clientPolicy.start();
+
+	// Always-on policy: bring the tunnel back when it is down (e.g. after the
+	// reconnect loop gave up). Checked once a minute.
+	let alwaysOnAttempt = null;
+	setInterval(() => {
+		if (clientPolicy.getPolicy().autoConnect !== 'always_on') return;
+		if (tunnelState.connected || isReconnecting || alwaysOnAttempt) return;
+		if (!store.get('server.url', '')) return;
+		log.info('Always-on policy: tunnel is down, reconnecting');
+		alwaysOnAttempt = connectTunnel().catch(() => {}).finally(() => { alwaysOnAttempt = null; });
+	}, 60 * 1000).unref?.();
 
 	// Auto-Connect
 	if (store.get('tunnel.autoConnect', true)) {
@@ -720,10 +882,14 @@ app.whenReady().then(async () => {
 			try {
 				const newConfig = await apiClient.checkConfigUpdate();
 				if (newConfig) {
-					// Validate before applying — reject empty or malformed configs
-					if (!newConfig.includes('[Interface]') || !newConfig.includes('PrivateKey')) {
-						log.warn('Config update rejected: missing [Interface] or PrivateKey');
+					// Validate before applying — fail-closed via shared validator.
+					const validation = validateWgConfig(newConfig);
+					if (!validation.ok) {
+						log.warn('Config update rejected: ' + validation.errors.join(', '));
 					} else {
+						if (validation.warnings && validation.warnings.length > 0) {
+							log.warn('Config update warnings: ' + validation.warnings.join(', '));
+						}
 						log.info('Neue Konfiguration vom Server erhalten');
 						await wgService.writeConfig(WG_CONFIG_FILE, newConfig);
 						if (tunnelState.connected) {
@@ -738,26 +904,34 @@ app.whenReady().then(async () => {
 		}, pollInterval);
 	}
 
-	// Auto-Update
-	updater = new Updater({
-		serverUrl: store.get('server.url', ''),
-		apiKey: store.get('server.apiKey', ''),
-		log,
-	});
+	// Auto-Update. Mandatory updates (server: below the minimum version) are
+	// never installed automatically: the installer ends the app and the
+	// tunnel, so the user starts it (banner, sidebar card, tray). The notice
+	// cannot be dismissed and is shown again on every start while required.
 	updater.start((release) => {
 		pendingUpdate = release;
-		log.info(`Update bereit: v${release.version}`);
+		log.info(`Update bereit: v${release.version}${release.mandatory ? ' (Pflicht-Update)' : ''}`);
 		updateTray(tunnelState.connected ? 'connected' : 'disconnected');
 		showUpdateNotification(release);
+	}, {
+		onPolicyChange: (policy) => {
+			mainWindow?.webContents.send('update:policy', policy);
+			updateTray(tunnelState.connected ? 'connected' : 'disconnected');
+			if (policy.mandatory && pendingUpdate) {
+				notifyMandatoryUpdate({ version: policy.version, minVersion: policy.minVersion });
+			}
+		},
 	});
 
-	// Autostart
-	if (store.get('app.startWithWindows', true)) {
+	// Autostart (nicht im E2E-Test)
+	if (!e2e && store.get('app.startWithWindows', true)) {
 		app.setLoginItemSettings({
 			openAtLogin: true,
 			path: process.execPath,
 			args: ['--minimized'],
 		});
+	} else if (clientPolicy.getPolicy().autostart === 'forbidden') {
+		setAutostart(false);
 	}
 
 	log.info('GateControl Client bereit');
@@ -780,11 +954,15 @@ async function quitApp() {
 		await disconnectTunnel();
 	}
 
+	// Remove the firewall rules for this session only; the kill-switch
+	// preference stays on and is applied again on the next connect.
 	if (killSwitch?.enabled) {
 		try {
 			await killSwitch.disable();
-			store.set('tunnel.killSwitch', false);
-		} catch {}
+		} catch (err) {
+			// Zustand bleibt gespeichert — der nächste Start räumt auf
+			log.error('Kill-Switch konnte beim Beenden nicht deaktiviert werden:', err.message);
+		}
 	}
 
 	if (rdpAllow?.enabled) {

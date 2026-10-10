@@ -1,298 +1,525 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="de" data-theme="dark">
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; script-src 'self';">
+	<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; script-src 'self';">
 	<title>GateControl</title>
-	<link rel="preconnect" href="https://fonts.googleapis.com">
-	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-	<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+	<link rel="stylesheet" href="styles/fonts.css">
 	<link rel="stylesheet" href="styles/app.css">
 </head>
 <body>
-	<!-- ── Titlebar (frameless) ──────────────────────────── -->
+<div class="gc" id="app-root">
+
+	<!-- ── Titelleiste (frameless) ───────────────────────── -->
 	<header class="titlebar" id="titlebar">
 		<div class="titlebar-drag">
-			<svg class="titlebar-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-				<circle cx="12" cy="12" r="3"/>
-				<path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"/>
-			</svg>
-			<span class="titlebar-text">GateControl</span>
-			<span class="titlebar-version" id="app-version"></span>
+			<svg class="titlebar-logo" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+			<span class="disp titlebar-text">GateControl</span>
+			<span class="chip chip-edition" data-i18n="ui.edition">Community</span>
 		</div>
 		<div class="titlebar-controls">
-			<button class="tb-btn" id="btn-minimize" data-i18n-title="titlebar.minimize" title="Minimieren">
-				<svg viewBox="0 0 10 10"><path d="M1 5h8" stroke="currentColor" stroke-width="1.2"/></svg>
+			<button class="tb" id="btn-theme" type="button" title="Helles Design" aria-label="Helles Design">
+				<svg class="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+				<svg class="icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
 			</button>
-			<button class="tb-btn tb-close" id="btn-close" data-i18n-title="titlebar.close" title="In Tray minimieren">
-				<svg viewBox="0 0 10 10"><path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" stroke-width="1.2"/></svg>
+			<button class="tb" id="btn-minimize" type="button" data-i18n-title="titlebar.minimize" data-i18n-aria="titlebar.minimize" title="Minimieren" aria-label="Minimieren">
+				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M5 12h14"/></svg>
+			</button>
+			<button class="tb" id="btn-maximize" type="button" data-i18n-title="ui.titlebar.maximize" data-i18n-aria="ui.titlebar.maximize" title="Maximieren" aria-label="Maximieren">
+				<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
+			</button>
+			<button class="tb tb-x" id="btn-close" type="button" data-i18n-title="titlebar.close" data-i18n-aria="titlebar.close" title="In Tray minimieren" aria-label="In Tray minimieren">
+				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
 			</button>
 		</div>
 	</header>
 
-	<!-- ── App Container ─────────────────────────────────── -->
-	<main class="app">
-		<!-- ── Navigation ─────────────────────────────────── -->
-		<nav class="nav" id="nav">
-			<button class="nav-btn active" data-page="status" title="Status" data-i18n-title="nav.status">
-				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-			</button>
-			<button class="nav-btn" data-page="settings" title="Einstellungen" data-i18n-title="nav.settings">
-				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
-			</button>
-			<button class="nav-btn" data-page="logs" title="Logs" data-i18n-title="nav.logs">
-				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-			</button>
+	<div class="shell">
+
+		<!-- ── Seitenleiste ──────────────────────────────── -->
+		<nav class="sidebar" id="nav" data-i18n-aria="ui.nav.main" aria-label="Hauptnavigation">
+			<div class="card conn-card">
+				<span class="dot conn-dot" id="side-dot"></span>
+				<div class="conn-card-text">
+					<div class="conn-card-label" id="side-conn-label">Getrennt</div>
+					<div class="mono conn-card-sub" id="side-conn-sub">—</div>
+				</div>
+				<button class="sw" id="side-conn-toggle" type="button" aria-pressed="false" data-i18n-aria="ui.conn.toggle" aria-label="VPN-Verbindung"><span></span></button>
+			</div>
+
+			<div class="nav-list">
+				<button class="nav nav-btn active" type="button" data-page="status" data-i18n-title="ui.nav.overview" title="Übersicht">
+					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+					<span class="nav-label" data-i18n="ui.nav.overview">Übersicht</span>
+				</button>
+				<button class="nav nav-btn" type="button" data-page="services" data-i18n-title="ui.nav.services" title="Dienste">
+					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/></svg>
+					<span class="nav-label" data-i18n="ui.nav.services">Dienste</span>
+					<span class="count" id="services-count" hidden></span>
+				</button>
+				<button class="nav nav-btn" type="button" data-page="logs" data-i18n-title="nav.logs" title="Logs">
+					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+					<span class="nav-label" data-i18n="nav.logs">Logs</span>
+				</button>
+				<button class="nav nav-btn" type="button" data-page="settings" data-i18n-title="nav.settings" title="Einstellungen">
+					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>
+					<span class="nav-label" data-i18n="nav.settings">Einstellungen</span>
+				</button>
+			</div>
+
+			<span class="grow"></span>
+
+			<div id="update-slot"></div>
+
+			<div class="device-info">
+				<span class="device-info-label" data-i18n="settings.server">Server</span>
+				<span class="mono device-info-value" id="side-server">—</span>
+			</div>
 		</nav>
 
-		<!-- ── Pages ──────────────────────────────────────── -->
-		<div class="pages">
+		<!-- ── Inhalt ────────────────────────────────────── -->
+		<main class="pages scroll" id="pages">
 
-			<!-- STATUS PAGE -->
+			<!-- ═════════ ÜBERSICHT ═════════ -->
 			<section class="page active" id="page-status">
-				<!-- Connection Ring -->
-				<div class="status-hero">
-					<div class="ring-container" id="ring-container">
-						<svg class="ring" viewBox="0 0 200 200">
-							<circle class="ring-track" cx="100" cy="100" r="88" fill="none" stroke-width="4"/>
-							<circle class="ring-fill" id="ring-fill" cx="100" cy="100" r="88" fill="none" stroke-width="4"
-								stroke-dasharray="553" stroke-dashoffset="553"/>
-						</svg>
-						<div class="ring-inner">
-							<div class="status-icon" id="status-icon">
-								<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-									<path d="M18.36 6.64A9 9 0 015.64 18.36M5.64 5.64A9 9 0 0118.36 18.36"/>
-								</svg>
+				<div class="page-pad">
+					<div class="page-head">
+						<div class="grow">
+							<h1 class="disp page-title" data-i18n="ui.nav.overview">Übersicht</h1>
+							<p class="page-sub" id="overview-sub"></p>
+						</div>
+						<button class="btn btn-sec" id="portal-btn" type="button" hidden>
+							<span data-i18n="portal.open">Portal öffnen</span>
+							<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+						</button>
+					</div>
+
+					<div id="update-required-slot"></div>
+					<div id="expiry-slot"></div>
+
+					<div class="ov-grid">
+						<!-- Hero -->
+						<section class="card hero" id="hero" data-state="off">
+							<div class="hero-main">
+								<div class="hero-head">
+									<div class="hero-icon" id="status-icon">
+										<svg class="hi hi-on" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+										<svg class="hi hi-off" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m4 4 16 16"/></svg>
+										<svg class="hi hi-connecting spin" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9"/></svg>
+										<svg class="hi hi-error" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+									</div>
+									<div class="hero-text" aria-live="polite">
+										<div class="lbl" data-i18n="ui.hero.label">Status</div>
+										<div class="disp hero-title" id="status-label">Nicht verbunden</div>
+										<div class="hero-sub" id="hero-sub"></div>
+									</div>
+								</div>
+
+								<div class="hero-progress" id="hero-progress" hidden><div class="hero-progress-bar"></div></div>
+
+								<div class="hero-error" id="hero-error" hidden></div>
+
+								<div class="hero-actions">
+									<button class="btn btn-pri btn-lg connect-btn" id="connect-btn" type="button">
+										<svg class="icon-power" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.8 0"/></svg>
+										<svg class="icon-retry" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
+										<span class="connect-btn-text">Verbinden</span>
+									</button>
+									<button class="btn btn-ghost" id="hero-log-btn" type="button" hidden><span data-i18n="ui.hero.showLog">Protokoll anzeigen</span></button>
+									<span class="hero-tip" id="hero-tip" data-i18n="ui.hero.tipAutoConnect" hidden></span>
+								</div>
 							</div>
-							<div class="status-label" id="status-label" data-i18n="status.disconnected">Getrennt</div>
+							<dl class="hero-facts">
+								<div><dt class="lbl" data-i18n="stats.endpoint">Endpunkt</dt><dd class="mono" id="stat-endpoint">—</dd></div>
+								<div><dt class="lbl" data-i18n="stats.handshake">Letzter Handshake</dt><dd class="mono" id="stat-handshake">—</dd></div>
+								<div><dt class="lbl" data-i18n="ui.hero.connectedSince">Verbunden seit</dt><dd class="mono" id="stat-uptime">—</dd></div>
+								<div class="hero-facts-pair">
+									<div><dt class="lbl" data-i18n="stats.rx">↓ Empfangen</dt><dd class="mono" id="stat-rx">0 B</dd></div>
+									<div><dt class="lbl" data-i18n="stats.tx">↑ Gesendet</dt><dd class="mono" id="stat-tx">0 B</dd></div>
+								</div>
+							</dl>
+						</section>
+
+						<!-- Schutz -->
+						<section class="card protect">
+							<h2 class="card-title" data-i18n="ui.protection.title">Schutz</h2>
+							<div class="protect-rows">
+								<div class="protect-row">
+									<span class="chip chip-icon c-warn" id="ks-chip"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></span>
+									<span class="grow" data-i18n="killswitch.label">Kill-Switch</span>
+									<label class="switch"><input type="checkbox" id="killswitch-quick" data-i18n-aria="killswitch.label" aria-label="Kill-Switch"><span class="slider"></span></label>
+								</div>
+								<div class="protect-row">
+									<span class="chip chip-icon c-info"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg></span>
+									<span class="grow" data-i18n="ui.protection.routing">Routing</span>
+									<button class="btn btn-ghost btn-xs" id="routing-btn" type="button">—</button>
+								</div>
+							</div>
+							<div class="divider"></div>
+							<div class="dns-section">
+								<div class="dns-head">
+									<span class="dns-title grow" data-i18n="ui.protection.dnsTitle">DNS-Leak-Test</span>
+									<button class="btn btn-sec btn-sm" id="dns-test-btn" type="button"><span id="dns-test-label">Testen</span></button>
+								</div>
+								<div class="dns-result" id="dns-result" aria-live="polite">
+									<span class="dot" id="dns-dot"></span>
+									<span class="dns-text" id="dns-text"></span>
+								</div>
+							</div>
+						</section>
+
+						<!-- Durchsatz -->
+						<section class="card throughput" id="bandwidth-section">
+							<div class="throughput-head">
+								<h2 class="card-title grow" data-i18n="ui.throughput.title">Durchsatz</h2>
+								<div class="rate">
+									<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--acc-t)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+									<span class="rate-label" data-i18n="ui.throughput.download">Download</span>
+									<span class="mono rate-value" id="stat-rx-speed">—</span>
+								</div>
+								<div class="rate">
+									<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--info)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+									<span class="rate-label" data-i18n="ui.throughput.upload">Upload</span>
+									<span class="mono rate-value" id="stat-tx-speed">—</span>
+								</div>
+							</div>
+							<div class="chart" id="bandwidth-chart" hidden>
+								<canvas id="bandwidth-canvas"></canvas>
+								<span class="mono chart-max" id="chart-max"></span>
+								<span class="mono chart-zero">0</span>
+							</div>
+							<div class="chart-empty" id="bandwidth-empty">
+								<span class="chart-empty-title" data-i18n="ui.throughput.emptyTitle">Keine Live-Daten</span>
+								<span data-i18n="ui.throughput.emptyDesc">Verbinde dich, um den Durchsatz in Echtzeit zu sehen.</span>
+							</div>
+						</section>
+
+						<!-- Datennutzung -->
+						<section class="card usage" id="traffic-usage" hidden>
+							<h2 class="card-title" data-i18n="stats.dataUsage">Datennutzung</h2>
+							<div class="seg" id="usage-period" role="tablist">
+								<button type="button" role="tab" data-usage="last24h" data-i18n="ui.usage.p24h">24 h</button>
+								<button type="button" role="tab" data-usage="last7d" class="on" data-i18n="stats.period7d">7 Tage</button>
+								<button type="button" role="tab" data-usage="last30d" data-i18n="stats.period30d">30 Tage</button>
+								<button type="button" role="tab" data-usage="total" data-i18n="stats.periodTotal">Gesamt</button>
+							</div>
+							<div class="disp usage-total" id="usage-total">0 B</div>
+							<div class="usage-bar"><div class="usage-bar-rx" id="usage-bar-rx"></div><div class="usage-bar-tx" id="usage-bar-tx"></div></div>
+							<div class="usage-legend"><span class="dot usage-dot-rx"></span>↓ <span data-i18n="ui.usage.rx">Empfangen</span> <strong class="mono" id="usage-rx">0 B</strong></div>
+							<div class="usage-legend"><span class="dot usage-dot-tx"></span>↑ <span data-i18n="ui.usage.tx">Gesendet</span> <strong class="mono" id="usage-tx">0 B</strong></div>
+						</section>
+					</div>
+
+					<!-- Dienste Schnellzugriff -->
+					<section class="services-quick" id="services-section" hidden>
+						<div class="section-head">
+							<h2 class="card-title grow" data-i18n="ui.nav.services">Dienste</h2>
+							<button class="btn btn-ghost btn-sm" id="services-all-btn" type="button"><span data-i18n="ui.services.showAll">Alle anzeigen</span></button>
 						</div>
-					</div>
-				</div>
-
-				<!-- Connect Button -->
-				<button class="connect-btn" id="connect-btn">
-					<span class="connect-btn-text" data-i18n="action.connect">Verbinden</span>
-					<div class="connect-btn-loader" hidden>
-						<div class="spinner"></div>
-					</div>
-				</button>
-
-				<!-- Stats Grid -->
-				<div class="stats-grid" id="stats-grid">
-					<div class="stat-card">
-						<div class="stat-label" data-i18n="stats.endpoint">Endpoint</div>
-						<div class="stat-value mono" id="stat-endpoint">—</div>
-					</div>
-					<div class="stat-card">
-						<div class="stat-label" data-i18n="stats.handshake">Handshake</div>
-						<div class="stat-value mono" id="stat-handshake">—</div>
-					</div>
-					<div class="stat-card">
-						<div class="stat-label" data-i18n="stats.rx">↓ Empfangen</div>
-						<div class="stat-value mono" id="stat-rx">0 B</div>
-						<div class="stat-speed" id="stat-rx-speed"></div>
-					</div>
-					<div class="stat-card">
-						<div class="stat-label" data-i18n="stats.tx">↑ Gesendet</div>
-						<div class="stat-value mono" id="stat-tx">0 B</div>
-						<div class="stat-speed" id="stat-tx-speed"></div>
-					</div>
-				</div>
-
-				<!-- Bandwidth Graph -->
-				<div class="bandwidth-graph" id="bandwidth-section" style="display:none">
-					<canvas id="bandwidth-canvas" width="440" height="80"></canvas>
-				</div>
-
-				<!-- Traffic Usage -->
-				<div class="traffic-usage" id="traffic-usage" style="display:none">
-					<div class="section-header">
-						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg>
-						<span class="section-title" data-i18n="stats.dataUsage">Datenverbrauch</span>
-					</div>
-					<div class="traffic-grid" id="traffic-grid"></div>
-				</div>
-
-				<!-- Services List -->
-				<div class="services-section" id="services-section" style="display:none">
-					<div class="section-header">
-						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
-						<span class="section-title" data-i18n="services.title">Erreichbare Dienste</span>
-					</div>
-					<div id="services-list" class="services-list"></div>
-				</div>
-
-				<!-- DNS Leak Test -->
-				<div class="dns-section">
-					<button class="dns-test-btn" id="dns-test-btn">
-						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
-						DNS-Leak-Test
-					</button>
-					<div id="dns-result" class="dns-result" style="display:none"></div>
+						<div class="services-quick-grid" id="services-list"></div>
+					</section>
 				</div>
 			</section>
 
-			<!-- SETTINGS PAGE -->
-			<section class="page" id="page-settings">
-				<h2 class="page-title" data-i18n="settings.title">Einstellungen</h2>
-
-				<!-- Server -->
-				<div class="settings-group">
-					<h3 class="group-title" data-i18n="settings.server">GateControl Server</h3>
-					<div class="field">
-						<label class="field-label" for="server-url" data-i18n="settings.serverUrl">Server-URL</label>
-						<input class="field-input" id="server-url" type="url" placeholder="https://gate.example.com">
-					</div>
-					<div class="field">
-						<label class="field-label" for="api-key" data-i18n="settings.apiKey">API-Key</label>
-						<div class="field-row">
-							<input class="field-input mono" id="api-key" type="password" placeholder="gc_xxxxxxxxxxxxxxxx">
-							<button class="field-btn" id="toggle-api-key" data-i18n-title="settings.showApiKey" title="Anzeigen">
-								<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-							</button>
+			<!-- ═════════ DIENSTE ═════════ -->
+			<section class="page" id="page-services">
+				<div class="page-pad">
+					<div class="page-head">
+						<div class="grow">
+							<h1 class="disp page-title" data-i18n="services.title">Erreichbare Dienste</h1>
+							<p class="page-sub" data-i18n="ui.services.sub">Interne Anwendungen, die über diesen Tunnel erreichbar sind.</p>
 						</div>
 					</div>
-					<div class="field-actions">
-						<button class="btn btn-secondary" id="btn-test-server" data-i18n="action.testConnection">Verbindung testen</button>
-						<button class="btn btn-primary" id="btn-save-server" data-i18n="action.saveAndRegister">Speichern &amp; Registrieren</button>
+					<div class="notice notice-info" id="services-offline" hidden>
+						<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--info)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+						<span class="grow" data-i18n="ui.services.offline">Diese Dienste sind nur mit aktiver VPN-Verbindung erreichbar.</span>
+						<button class="btn btn-pri btn-sm" id="services-connect-btn" type="button"><span data-i18n="ui.services.connectNow">Jetzt verbinden</span></button>
 					</div>
-					<div class="field-status" id="server-status" hidden></div>
+					<div class="services-grid" id="services-page-list"></div>
+					<div class="empty-state" id="services-empty" data-i18n="ui.services.empty" hidden>Für dieses Gerät sind keine Dienste freigegeben.</div>
 				</div>
+			</section>
 
-				<!-- Config Import -->
-				<div class="settings-group">
-					<h3 class="group-title" data-i18n="settings.importConfig">Konfiguration importieren</h3>
-					<div class="import-actions">
-						<button class="btn btn-outline" id="btn-import-file">
-							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-							.conf Datei importieren
+			<!-- ═════════ LOGS ═════════ -->
+			<section class="page page-fill" id="page-logs">
+				<div class="page-pad page-pad-fill">
+					<div class="page-head">
+						<div class="grow">
+							<h1 class="disp page-title" data-i18n="logs.title">Logs</h1>
+							<p class="page-sub" id="log-count"></p>
+						</div>
+						<button class="btn btn-sec" id="btn-refresh-logs" type="button">
+							<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
+							<span data-i18n="action.refresh">Aktualisieren</span>
 						</button>
-						<button class="btn btn-outline" id="btn-import-qr">
-							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="3" height="3"/><rect x="18" y="18" width="3" height="3"/></svg>
-							QR-Code scannen
+						<button class="btn btn-sec" id="btn-export-logs" type="button">
+							<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+							<span data-i18n="logs.export">Export</span>
 						</button>
 					</div>
-					<!-- QR Scanner Preview -->
-					<div class="qr-preview" id="qr-preview" hidden>
-						<video id="qr-video" autoplay playsinline></video>
-						<canvas id="qr-canvas" hidden></canvas>
-						<button class="btn btn-secondary" id="btn-qr-cancel" data-i18n="action.cancel">Abbrechen</button>
-					</div>
-				</div>
-
-				<!-- Split-Tunneling -->
-				<div class="settings-group">
-					<div class="toggle-row compact">
-						<div>
-							<span class="toggle-label" data-i18n="settings.splitTunnel">Split-Tunneling</span>
-							<div class="toggle-desc" style="font-size:10px;color:var(--text-3)" data-i18n="settings.splitTunnelDesc">Nur bestimmte IPs/Subnetze durch den VPN-Tunnel leiten</div>
+					<div class="log-filters">
+						<div class="search">
+							<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--faint)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+							<input class="inp" id="log-search" type="search" data-i18n-placeholder="ui.logs.search" data-i18n-aria="ui.logs.search" placeholder="Meldungen durchsuchen" aria-label="Meldungen durchsuchen">
 						</div>
-						<label class="switch"><input type="checkbox" id="opt-split-tunnel"><span class="slider"></span></label>
-					</div>
-					<div id="split-routes-section" style="display:none">
-						<div class="field">
-							<label class="field-label" for="opt-split-routes" data-i18n="settings.splitRoutesLabel">IPs und Subnetze (eine pro Zeile)</label>
-							<textarea class="field-input mono" id="opt-split-routes" rows="4" placeholder="10.0.0.0/8&#10;192.168.1.0/24&#10;172.16.0.0/12" style="resize:vertical;font-size:11px"></textarea>
+						<div class="seg" id="log-level-filter" role="tablist">
+							<button type="button" role="tab" class="on" data-level="all" data-i18n="ui.logs.levelAll">Alle</button>
+							<button type="button" role="tab" data-level="info" data-i18n="ui.logs.levelInfo">Info</button>
+							<button type="button" role="tab" data-level="warn" data-i18n="ui.logs.levelWarn">Warnung</button>
+							<button type="button" role="tab" data-level="error" data-i18n="ui.logs.levelError">Fehler</button>
 						</div>
-						<div style="font-size:10px;color:var(--text-3);margin-top:4px">
-							<span data-i18n="settings.splitRoutesExamples">Beispiele:</span> <code>10.0.0.0/8</code>, <code>192.168.1.0/24</code>, <code>172.16.5.100</code>
-						</div>
-						<button class="btn btn-secondary" id="btn-save-split" style="margin-top:8px" data-i18n="action.save">Speichern</button>
-						<div id="split-status" style="display:none;font-size:10px;margin-top:6px;padding:6px 8px;border-radius:var(--radius-sm)"></div>
-					</div>
-				</div>
-
-				<!-- Security Settings -->
-				<div class="settings-group">
-					<h3 class="group-title" data-i18n="settings.security">Sicherheit</h3>
-					<div class="toggle-row compact" id="killswitch-row">
-						<div>
-							<span class="toggle-label" data-i18n="killswitch.label">Kill-Switch</span>
-							<div class="toggle-desc" style="font-size:10px;color:var(--text-3)" data-i18n="killswitch.desc">Blockiert Traffic ohne VPN</div>
-						</div>
-						<label class="switch">
-							<input type="checkbox" id="killswitch-toggle">
-							<span class="slider"></span>
-						</label>
-					</div>
-					<div class="toggle-row compact" id="rdp-allow-row">
-						<div>
-							<span class="toggle-label" data-i18n="rdpAllow.label">Remote Desktop erlauben</span>
-							<div class="toggle-desc" style="font-size:10px;color:var(--text-3)" data-i18n="rdpAllow.desc">RDP-Zugriff (Port 3389) über VPN freigeben</div>
-						</div>
-						<label class="switch">
-							<input type="checkbox" id="rdp-allow-toggle">
-							<span class="slider"></span>
-						</label>
-					</div>
-				</div>
-
-				<!-- App Settings -->
-				<div class="settings-group">
-					<h3 class="group-title" data-i18n="settings.app">Anwendung</h3>
-					<div class="toggle-row compact">
-						<span class="toggle-label" data-i18n="settings.theme">Design</span>
-						<div class="theme-switch" id="theme-switch">
-							<button class="theme-btn active" data-theme="dark" title="Dark">
-								<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
-							</button>
-							<button class="theme-btn" data-theme="light" title="Light">
-								<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
-							</button>
+						<div class="seg" id="log-period-filter" role="tablist">
+							<button type="button" role="tab" data-period="1h">1 h</button>
+							<button type="button" role="tab" data-period="12h">12 h</button>
+							<button type="button" role="tab" data-period="24h">24 h</button>
+							<button type="button" role="tab" class="on" data-period="all" data-i18n="logs.filterAll">Alle</button>
 						</div>
 					</div>
-					<div class="toggle-row compact">
-						<span class="toggle-label" data-i18n="settings.language">Sprache</span>
-						<select class="field-input" id="locale-select" style="width:auto;padding:4px 8px;font-size:11px">
-							<option value="de">Deutsch</option>
-							<option value="en">English</option>
-						</select>
-					</div>
-					<div class="toggle-row compact">
-						<span class="toggle-label" data-i18n="settings.autostart">Mit Windows starten</span>
-						<label class="switch"><input type="checkbox" id="opt-autostart" checked><span class="slider"></span></label>
-					</div>
-					<div class="toggle-row compact">
-						<span class="toggle-label" data-i18n="settings.minimized">Minimiert starten</span>
-						<label class="switch"><input type="checkbox" id="opt-minimized" checked><span class="slider"></span></label>
-					</div>
-					<div class="toggle-row compact">
-						<span class="toggle-label" data-i18n="settings.autoConnect">Auto-Connect</span>
-						<label class="switch"><input type="checkbox" id="opt-autoconnect" checked><span class="slider"></span></label>
-					</div>
-					<div class="field">
-						<label class="field-label" for="opt-check-interval" data-i18n="settings.checkInterval">Verbindungsprüfung (Sekunden)</label>
-						<input class="field-input" id="opt-check-interval" type="number" value="30" min="5" max="300">
-					</div>
-					<div class="field">
-						<label class="field-label" for="opt-poll-interval" data-i18n="settings.pollInterval">Config-Aktualisierung (Sekunden)</label>
-						<input class="field-input" id="opt-poll-interval" type="number" value="300" min="30" max="3600">
+					<div class="card log-card scroll">
+						<div class="log-row log-row-head mono">
+							<span class="log-time" data-i18n="ui.logs.colTime">Zeit</span>
+							<span class="log-level" data-i18n="ui.logs.colLevel">Stufe</span>
+							<span class="log-msg" data-i18n="ui.logs.colMessage">Meldung</span>
+						</div>
+						<div class="log-output mono" id="log-output"></div>
+						<div class="empty-state" id="log-empty" hidden></div>
 					</div>
 				</div>
 			</section>
 
-			<!-- LOGS PAGE -->
-			<section class="page" id="page-logs">
-				<div class="page-header">
-					<h2 class="page-title" data-i18n="logs.title">Logs</h2>
-					<div style="display:flex;gap:6px;align-items:center">
-						<div class="btn-group" id="log-period-filter">
-							<button class="btn btn-ghost btn-sm active" data-period="all" data-i18n="logs.filterAll">Alle</button>
-							<button class="btn btn-ghost btn-sm" data-period="24h">24h</button>
-							<button class="btn btn-ghost btn-sm" data-period="12h">12h</button>
-							<button class="btn btn-ghost btn-sm" data-period="1h">1h</button>
+			<!-- ═════════ EINSTELLUNGEN ═════════ -->
+			<section class="page page-fill" id="page-settings">
+				<div class="settings">
+					<div class="settings-nav">
+						<h1 class="disp settings-title" data-i18n="settings.title">Einstellungen</h1>
+						<button class="nav set-tab on" type="button" data-tab="conn"><span data-i18n="ui.settings.tabConnection">Verbindung</span></button>
+						<button class="nav set-tab" type="button" data-tab="sec"><span data-i18n="ui.settings.tabSecurity">Sicherheit</span></button>
+						<button class="nav set-tab" type="button" data-tab="split"><span data-i18n="ui.settings.tabSplit">Split-Tunneling</span></button>
+						<button class="nav set-tab" type="button" data-tab="app"><span data-i18n="ui.settings.tabApp">Anwendung</span></button>
+						<button class="nav set-tab" type="button" data-tab="adv"><span data-i18n="ui.settings.tabAdvanced">Erweitert</span></button>
+						<button class="nav set-tab" type="button" data-tab="about"><span data-i18n="ui.settings.tabAbout">Über</span></button>
+					</div>
+
+					<div class="settings-body scroll">
+						<div class="policy-banner" id="policy-banner" role="note" hidden></div>
+
+						<!-- Verbindung -->
+						<div class="set-panel active" id="set-conn">
+							<h2 class="set-heading" data-i18n="ui.settings.tabConnection">Verbindung</h2>
+							<div class="policy-hint policy-hint-block" id="policy-server-hint" hidden></div>
+							<section class="card set-card">
+								<h3 class="set-card-title" data-i18n="settings.server">Server</h3>
+								<div class="field">
+									<label for="server-url" data-i18n="settings.serverUrl">Server-URL</label>
+									<input class="inp mono" id="server-url" type="url" placeholder="https://gate.example.com">
+								</div>
+								<div class="field">
+									<label for="api-key" data-i18n="settings.apiKey">API-Schlüssel oder Einrichtungscode</label>
+									<div class="field-row">
+										<input class="inp mono" id="api-key" type="password" placeholder="XXXX-XXXX-XXXX-XXXX" data-i18n-placeholder="settings.apiKeyPlaceholder">
+										<button class="btn btn-sec btn-icon" id="toggle-api-key" type="button" data-i18n-title="settings.showApiKey" data-i18n-aria="settings.showApiKey" title="Anzeigen" aria-label="Anzeigen">
+											<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+										</button>
+									</div>
+									<span class="field-hint" data-i18n="settings.apiKeyHint"></span>
+								</div>
+								<div class="field-actions">
+									<button class="btn btn-sec" id="btn-test-server" type="button"><span data-i18n="action.testConnection">Verbindung testen</span></button>
+									<button class="btn btn-pri" id="btn-save-server" type="button"><span data-i18n="action.saveAndRegister">Speichern &amp; Registrieren</span></button>
+								</div>
+								<div class="field-status" id="server-status" role="status" hidden></div>
+							</section>
+
+							<section class="card set-card">
+								<h3 class="set-card-title" data-i18n="settings.importConfig">Konfiguration importieren</h3>
+								<p class="set-card-desc" data-i18n="ui.settings.importDesc"></p>
+								<div class="field-actions">
+									<button class="btn btn-sec" id="btn-import-file" type="button">
+										<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+										<span data-i18n="action.importFile">Datei importieren</span>
+									</button>
+									<button class="btn btn-sec" id="btn-import-qr" type="button">
+										<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3"/></svg>
+										<span data-i18n="action.scanQr">QR-Code scannen</span>
+									</button>
+								</div>
+								<div class="qr-preview" id="qr-preview" hidden>
+									<video id="qr-video" autoplay playsinline></video>
+									<canvas id="qr-canvas" hidden></canvas>
+									<button class="btn btn-sec" id="btn-qr-cancel" type="button"><span data-i18n="action.cancel">Abbrechen</span></button>
+								</div>
+							</section>
 						</div>
-						<button class="btn btn-secondary" id="btn-refresh-logs" data-i18n="action.refresh">Aktualisieren</button>
-						<button class="btn btn-secondary" id="btn-export-logs" data-i18n="logs.export">Export</button>
+
+						<!-- Sicherheit -->
+						<div class="set-panel" id="set-sec">
+							<h2 class="set-heading" data-i18n="settings.security">Sicherheit</h2>
+							<section class="card set-list">
+								<div class="set-row" id="killswitch-row">
+									<div class="grow">
+										<div class="set-row-title" data-i18n="killswitch.label">Kill-Switch</div>
+										<div class="set-row-desc" data-i18n="killswitch.desc">Blockiert Traffic ohne VPN</div>
+									</div>
+									<label class="switch"><input type="checkbox" id="killswitch-toggle" data-i18n-aria="killswitch.label" aria-label="Kill-Switch"><span class="slider"></span></label>
+								</div>
+								<div class="set-row" id="rdp-allow-row">
+									<div class="grow">
+										<div class="set-row-title" data-i18n="rdpAllow.label">Remote Desktop erlauben</div>
+										<div class="set-row-desc" data-i18n="rdpAllow.desc">RDP-Zugriff (Port 3389) über VPN freigeben</div>
+									</div>
+									<label class="switch"><input type="checkbox" id="rdp-allow-toggle" data-i18n-aria="rdpAllow.label" aria-label="Remote Desktop erlauben"><span class="slider"></span></label>
+								</div>
+							</section>
+						</div>
+
+						<!-- Split-Tunneling -->
+						<div class="set-panel" id="set-split">
+							<h2 class="set-heading" data-i18n="ui.settings.tabSplit">Split-Tunneling</h2>
+							<section class="card set-card">
+								<div class="lbl" data-i18n="ui.settings.splitQuestion">Welcher Verkehr geht durch das VPN?</div>
+								<input type="checkbox" id="opt-split-tunnel" hidden>
+								<button class="opt" type="button" data-split="off" aria-pressed="true">
+									<span class="radio"><span></span></span>
+									<span><span class="opt-title" data-i18n="ui.settings.splitAll">Gesamter Verkehr</span><span class="opt-desc" data-i18n="ui.settings.splitAllDesc"></span></span>
+								</button>
+								<button class="opt" type="button" data-split="on" aria-pressed="false">
+									<span class="radio"><span></span></span>
+									<span><span class="opt-title" data-i18n="ui.settings.splitOnly">Nur ausgewählte Ziele</span><span class="opt-desc" data-i18n="ui.settings.splitOnlyDesc"></span></span>
+								</button>
+							</section>
+							<section class="card set-card" id="split-routes-section" hidden>
+								<div class="field">
+									<label for="opt-split-routes" data-i18n="settings.splitRoutesLabel">Routen (eine pro Zeile)</label>
+									<textarea class="inp mono textarea" id="opt-split-routes" rows="5" placeholder="10.0.0.0/8&#10;192.168.1.0/24&#10;172.16.0.0/12"></textarea>
+									<span class="field-hint" data-i18n="settings.splitRoutesExamples">z. B. 10.0.0.0/8 oder 192.168.1.0/24</span>
+								</div>
+								<div class="field-actions">
+									<button class="btn btn-pri" id="btn-save-split" type="button"><span data-i18n="action.save">Speichern</span></button>
+									<span class="inline-status" id="split-status" role="status" hidden></span>
+								</div>
+							</section>
+						</div>
+
+						<!-- Anwendung -->
+						<div class="set-panel" id="set-app">
+							<h2 class="set-heading" data-i18n="settings.app">Anwendung</h2>
+							<section class="card set-list">
+								<div class="set-row">
+									<div class="grow">
+										<div class="set-row-title" data-i18n="settings.theme">Design</div>
+										<div class="set-row-desc" data-i18n="ui.settings.themeDesc"></div>
+									</div>
+									<div class="seg" id="theme-switch">
+										<button type="button" class="theme-btn" data-theme="system" data-i18n="ui.settings.themeSystem">System</button>
+										<button type="button" class="theme-btn" data-theme="light" data-i18n="ui.settings.themeLight">Hell</button>
+										<button type="button" class="theme-btn active" data-theme="dark" data-i18n="ui.settings.themeDark">Dunkel</button>
+									</div>
+								</div>
+								<div class="set-row">
+									<div class="grow"><label class="set-row-title" for="locale-select" data-i18n="settings.language">Sprache</label></div>
+									<select class="inp select" id="locale-select">
+										<option value="de">Deutsch</option>
+										<option value="en">English</option>
+									</select>
+								</div>
+								<div class="set-row">
+									<div class="grow">
+										<div class="set-row-title" data-i18n="settings.autostart">Mit Windows starten</div>
+										<div class="set-row-desc" data-i18n="ui.settings.autostartDesc"></div>
+									</div>
+									<label class="switch"><input type="checkbox" id="opt-autostart" checked data-i18n-aria="settings.autostart" aria-label="Autostart"><span class="slider"></span></label>
+								</div>
+								<div class="set-row">
+									<div class="grow">
+										<div class="set-row-title" data-i18n="settings.minimized">Minimiert starten</div>
+										<div class="set-row-desc" data-i18n="ui.settings.minimizedDesc"></div>
+									</div>
+									<label class="switch"><input type="checkbox" id="opt-minimized" checked data-i18n-aria="settings.minimized" aria-label="Minimiert starten"><span class="slider"></span></label>
+								</div>
+								<div class="set-row">
+									<div class="grow">
+										<div class="set-row-title" data-i18n="settings.autoConnect">Automatisch verbinden</div>
+										<div class="set-row-desc" data-i18n="ui.settings.autoConnectDesc"></div>
+									</div>
+									<label class="switch"><input type="checkbox" id="opt-autoconnect" checked data-i18n-aria="settings.autoConnect" aria-label="Automatisch verbinden"><span class="slider"></span></label>
+								</div>
+							</section>
+						</div>
+
+						<!-- Erweitert -->
+						<div class="set-panel" id="set-adv">
+							<h2 class="set-heading" data-i18n="ui.settings.tabAdvanced">Erweitert</h2>
+							<section class="card set-card set-grid">
+								<div class="field">
+									<label for="opt-check-interval" data-i18n="settings.checkInterval">Prüfintervall (s)</label>
+									<div class="field-inline"><input class="inp mono inp-num" id="opt-check-interval" type="number" value="30" min="5" max="300"><span class="muted" data-i18n="ui.settings.seconds">Sekunden</span></div>
+									<span class="field-hint" data-i18n="ui.settings.checkIntervalDesc"></span>
+								</div>
+								<div class="field">
+									<label for="opt-poll-interval" data-i18n="settings.pollInterval">Abfrageintervall (s)</label>
+									<div class="field-inline"><input class="inp mono inp-num" id="opt-poll-interval" type="number" value="300" min="30" max="3600"><span class="muted" data-i18n="ui.settings.seconds">Sekunden</span></div>
+									<span class="field-hint" data-i18n="ui.settings.pollIntervalDesc"></span>
+								</div>
+							</section>
+						</div>
+
+						<!-- Über -->
+						<div class="set-panel" id="set-about">
+							<h2 class="set-heading" data-i18n="ui.settings.tabAbout">Über</h2>
+							<section class="card about-card">
+								<div class="about-icon"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="var(--acc-t)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg></div>
+								<div class="grow">
+									<div class="disp about-name">GateControl Community Client</div>
+									<div class="mono muted" id="about-version"></div>
+									<div class="mono muted about-device-id" id="about-device-id" data-i18n-title="ui.settings.deviceIdHint" title="Damit ordnet der Administrator die Gerätebindung zu."></div>
+									<div class="field-hint about-device-hint" data-i18n="ui.settings.deviceIdHint">Damit ordnet der Administrator die Gerätebindung zu.</div>
+								</div>
+							</section>
+							<section class="card set-card set-card-row">
+								<div class="grow">
+									<div class="set-row-title" data-i18n="update.title">Update</div>
+									<div class="set-row-desc" id="update-check-result"></div>
+								</div>
+								<button class="btn btn-sec" id="btn-check-update" type="button"><span data-i18n="update.checkBtn">Nach Updates suchen</span></button>
+							</section>
+							<section class="card set-card set-card-row">
+								<div class="grow">
+									<div class="set-row-title" data-i18n="update.channel">Update-Kanal</div>
+									<div class="set-row-desc" data-i18n="update.channelHint">Vom Server zugewiesen</div>
+								</div>
+								<span class="chip" id="update-channel">–</span>
+							</section>
+							<section class="card set-card">
+								<div class="set-card-row" style="display:flex;gap:16px">
+									<div class="grow">
+										<div class="set-row-title" data-i18n="support.title">Support-Paket</div>
+										<div class="set-row-desc" data-i18n="support.desc">Bereinigte Diagnosedaten an den GateControl-Server senden</div>
+									</div>
+									<button class="btn btn-sec" id="support-send" type="button"><span data-i18n="support.button">Support-Paket senden</span></button>
+								</div>
+								<div class="field-status" id="support-status" role="status" aria-live="polite" hidden></div>
+							</section>
+						</div>
 					</div>
 				</div>
-				<pre class="log-output" id="log-output" data-i18n="logs.loading">Lade Logs...</pre>
 			</section>
 
-		</div>
-	</main>
+		</main>
+	</div>
 
-	<script src="renderer.js"></script>
+	<!-- ── Statusleiste ──────────────────────────────────── -->
+	<footer class="statusbar">
+		<span class="sb-item"><span class="dot sb-dot" id="sb-dot"></span><span id="sb-label">Getrennt</span></span>
+		<span class="mono sb-item" id="sb-endpoint"></span>
+		<span class="sb-item" id="sb-ks"></span>
+		<span class="mono sb-item" id="sb-rate"></span>
+		<span class="grow"></span>
+		<span class="mono" id="app-version"></span>
+	</footer>
+</div>
+
+<script src="update-state.js"></script>
+<script src="renderer.js"></script>
 </body>
 </html>

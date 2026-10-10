@@ -1,1 +1,92 @@
-{}
+{
+  "ui": {
+    "edition": "Community",
+    "nav": {
+      "main": "Main navigation"
+    },
+    "titlebar": {
+      "maximize": "Maximize",
+      "themeLight": "Light theme",
+      "themeDark": "Dark theme"
+    },
+    "conn": {
+      "error": "Error",
+      "notConfigured": "No server set up"
+    },
+    "hero": {
+      "label": "Status",
+      "on": "Protected",
+      "off": "Not connected",
+      "error": "Connection failed",
+      "subOnNoHost": "Your traffic is encrypted through the tunnel.",
+      "subConnecting": "This usually takes just a few seconds.",
+      "subError": "The last connection attempt failed.",
+      "subOffKs": "Kill switch active: internet is blocked until you connect.",
+      "tipAutoConnect": "Tip: automatic connect can be enabled in the settings.",
+      "connectedSince": "Connected for"
+    },
+    "overview": {
+      "sub": "Server {{ host }}",
+      "subNone": "No server set up yet"
+    },
+    "protection": {
+      "routingFull": "All traffic",
+      "routingSplit": "Split tunnel · {{ count }}",
+      "dnsTitle": "DNS leak test",
+      "dnsRun": "Test",
+      "dnsIdle": "Not checked in this session yet."
+    },
+    "throughput": {
+      "download": "Download",
+      "upload": "Upload",
+      "emptyTitle": "No live data",
+      "emptyDesc": "Connect to see throughput in real time."
+    },
+    "usage": {
+      "rx": "Received",
+      "tx": "Sent",
+      "p24h": "24 h"
+    },
+    "services": {
+      "sub": "Internal applications reachable through this tunnel.",
+      "offline": "These services are only reachable while the VPN is connected.",
+      "empty": "No services are shared with this device."
+    },
+    "logs": {
+      "levelAll": "All",
+      "levelInfo": "Info",
+      "levelWarn": "Warning",
+      "levelError": "Error",
+      "colTime": "Time",
+      "colLevel": "Level",
+      "colMessage": "Message"
+    },
+    "settings": {
+      "tabConnection": "Connection",
+      "tabSecurity": "Security",
+      "tabApp": "Application",
+      "tabAdvanced": "Advanced",
+      "importDesc": "Import a WireGuard file (.conf) or a setup QR code via webcam.",
+      "splitQuestion": "Which traffic goes through the VPN?",
+      "splitAll": "All traffic",
+      "splitAllDesc": "All internet and network traffic goes through the VPN. The safest option.",
+      "splitOnly": "Selected destinations only",
+      "splitOnlyDesc": "Only the IPs and subnets listed below go through the VPN.",
+      "themeSystem": "System",
+      "themeLight": "Light",
+      "themeDark": "Dark",
+      "themeDesc": "“System” follows the Windows setting.",
+      "autostartDesc": "GateControl starts in the notification area when you sign in.",
+      "minimizedDesc": "No window on startup, only the notification area icon.",
+      "autoConnectDesc": "Connect immediately on startup.",
+      "checkIntervalDesc": "How often the tunnel is checked for reachability (5–300 s).",
+      "pollIntervalDesc": "How often configuration and permissions are fetched from the server (30–3600 s).",
+      "seconds": "seconds",
+      "version": "Version {{ version }}",
+      "deviceId": "Device ID: {{ id }}",
+      "deviceIdUnavailable": "unavailable",
+      "deviceIdHint": "Lets your administrator match the device binding.",
+      "checking": "Checking …"
+    }
+  }
+}

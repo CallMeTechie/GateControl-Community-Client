@@ -1,1 +1,92 @@
-{}
+{
+  "ui": {
+    "edition": "Community",
+    "nav": {
+      "main": "Hauptnavigation"
+    },
+    "titlebar": {
+      "maximize": "Maximieren",
+      "themeLight": "Helles Design",
+      "themeDark": "Dunkles Design"
+    },
+    "conn": {
+      "error": "Fehler",
+      "notConfigured": "Kein Server eingerichtet"
+    },
+    "hero": {
+      "label": "Status",
+      "on": "Geschützt",
+      "off": "Nicht verbunden",
+      "error": "Verbindung fehlgeschlagen",
+      "subOnNoHost": "Dein Verkehr läuft verschlüsselt durch den Tunnel.",
+      "subConnecting": "Das dauert normalerweise nur wenige Sekunden.",
+      "subError": "Der letzte Verbindungsversuch ist fehlgeschlagen.",
+      "subOffKs": "Kill-Switch aktiv: Internet ist blockiert, bis du verbindest.",
+      "tipAutoConnect": "Tipp: Automatisch verbinden lässt sich in den Einstellungen aktivieren.",
+      "connectedSince": "Verbunden seit"
+    },
+    "overview": {
+      "sub": "Server {{ host }}",
+      "subNone": "Noch kein Server eingerichtet"
+    },
+    "protection": {
+      "routingFull": "Gesamter Verkehr",
+      "routingSplit": "Split-Tunnel · {{ count }}",
+      "dnsTitle": "DNS-Leak-Test",
+      "dnsRun": "Testen",
+      "dnsIdle": "Noch nicht geprüft in dieser Sitzung."
+    },
+    "throughput": {
+      "download": "Download",
+      "upload": "Upload",
+      "emptyTitle": "Keine Live-Daten",
+      "emptyDesc": "Verbinde dich, um den Durchsatz in Echtzeit zu sehen."
+    },
+    "usage": {
+      "rx": "Empfangen",
+      "tx": "Gesendet",
+      "p24h": "24 h"
+    },
+    "services": {
+      "sub": "Interne Anwendungen, die über diesen Tunnel erreichbar sind.",
+      "offline": "Diese Dienste sind nur mit aktiver VPN-Verbindung erreichbar.",
+      "empty": "Für dieses Gerät sind keine Dienste freigegeben."
+    },
+    "logs": {
+      "levelAll": "Alle",
+      "levelInfo": "Info",
+      "levelWarn": "Warnung",
+      "levelError": "Fehler",
+      "colTime": "Zeit",
+      "colLevel": "Stufe",
+      "colMessage": "Meldung"
+    },
+    "settings": {
+      "tabConnection": "Verbindung",
+      "tabSecurity": "Sicherheit",
+      "tabApp": "Anwendung",
+      "tabAdvanced": "Erweitert",
+      "importDesc": "Eine WireGuard-Datei (.conf) oder einen Einrichtungs-QR-Code per Webcam importieren.",
+      "splitQuestion": "Welcher Verkehr geht durch das VPN?",
+      "splitAll": "Gesamter Verkehr",
+      "splitAllDesc": "Aller Internet- und Netzwerkverkehr läuft durch das VPN. Am sichersten.",
+      "splitOnly": "Nur ausgewählte Ziele",
+      "splitOnlyDesc": "Nur die unten eingetragenen IPs und Subnetze laufen durch das VPN.",
+      "themeSystem": "System",
+      "themeLight": "Hell",
+      "themeDark": "Dunkel",
+      "themeDesc": "„System“ folgt der Windows-Einstellung.",
+      "autostartDesc": "GateControl startet bei der Anmeldung im Infobereich.",
+      "minimizedDesc": "Kein Fenster beim Start, nur das Symbol im Infobereich.",
+      "autoConnectDesc": "Beim Start sofort eine Verbindung herstellen.",
+      "checkIntervalDesc": "Wie oft der Tunnel auf Erreichbarkeit geprüft wird (5–300 s).",
+      "pollIntervalDesc": "Wie oft Konfiguration und Berechtigungen vom Server geladen werden (30–3600 s).",
+      "seconds": "Sekunden",
+      "version": "Version {{ version }}",
+      "deviceId": "Geräte-ID: {{ id }}",
+      "deviceIdUnavailable": "nicht verfügbar",
+      "deviceIdHint": "Damit ordnet der Administrator die Gerätebindung zu.",
+      "checking": "Suche …"
+    }
+  }
+}
