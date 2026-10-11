@@ -3,7 +3,7 @@
  * UI-Logik und State Management
  */
 
-const { tunnel, server, config, killSwitch, rdpAllow, autostart, logs, update, services, traffic, dns, shell, peer, permissions, onPortalUrl, portal, getVersion, getDeviceId, window: win, locale, policy: clientPolicy } = window.gatecontrol;
+const { tunnel, server, config, killSwitch, rdpAllow, autostart, logs, update, services, traffic, dns, shell, peer, permissions, onPortalUrl, portal, getVersion, getDeviceId, window: win, locale, policy: clientPolicy, notify: notifyApi } = window.gatecontrol;
 const { t } = window.gatecontrol.i18n;
 
 // Aktive Berechtigungen (werden beim Connect geladen)
@@ -178,8 +178,11 @@ $$('.nav-btn').forEach(btn => {
 	});
 });
 
+let currentPage = 'status';
+
 function navigateTo(page) {
 	if (!$(`#page-${page}`)) page = 'status';
+	currentPage = page;
 	$$('.nav-btn').forEach(b => {
 		const on = b.dataset.page === page;
 		b.classList.toggle('active', on);
@@ -193,6 +196,7 @@ function navigateTo(page) {
 	// Logs laden wenn Tab gewechselt
 	if (page === 'logs') refreshLogs();
 	if (page === 'status') redrawBandwidthGraph();
+	if (page === 'inbox') renderInbox();
 }
 
 // Navigation aus dem Main Process
@@ -244,6 +248,8 @@ function updateDOM() {
 	renderTraffic();
 	renderLogs();
 	renderUpdateCard();
+	renderInbox();
+	renderNotifySettings();
 }
 
 // Locale Init
@@ -469,6 +475,7 @@ function togglePortalBtn() {
 
 onPortalUrl?.((url) => {
 	currentPortalUrl = url;
+	renderNotifyQuiet();
 	togglePortalBtn();
 });
 
@@ -1563,6 +1570,422 @@ async function onPolicyState(st) {
 	renderRouting();
 	updateUI();
 	applyPolicyUi();
+}
+
+// ══════════════════════════════════════════════════════════
+//  NOTIFICATIONS ("Mitteilungen" + Settings → Benachrichtigungen)
+//  Data: window.gatecontrol.notify (core NotificationCenter in main).
+//  View logic without DOM access: notify-state.js (window.GCNotifyState).
+// ══════════════════════════════════════════════════════════
+const NS = window.GCNotifyState;
+
+/** Element with class and text (textContent only — server text is never HTML). */
+function nh(tag, cls, text) {
+	const node = document.createElement(tag);
+	if (cls) node.className = cls;
+	if (text !== undefined && text !== null) node.textContent = text;
+	return node;
+}
+
+/** Short status line under the inbox detail (Community has no toasts). */
+let inboxStatusTimer = null;
+function showInboxStatus(message, type) {
+	const st = $('#inbox-status');
+	if (!st) return;
+	st.hidden = false;
+	st.textContent = message;
+	st.className = `field-status ${type}`;
+	clearTimeout(inboxStatusTimer);
+	inboxStatusTimer = setTimeout(() => { st.hidden = true; }, 6000);
+}
+
+function factCard(label, value) {
+	const card = nh('div', 'card fact-card');
+	card.appendChild(nh('div', 'lbl', label));
+	card.appendChild(nh('div', 'fact-val', value));
+	return card;
+}
+const inbox = {
+	items: [],
+	topics: [],
+	unread: 0,
+	filter: 'all',
+	selectedId: null,
+	error: false,
+	loaded: false,
+	status: null,
+	prefs: null,
+};
+
+function notifyAvailable() {
+	return !!(notifyApi && NS);
+}
+
+/** Nav badge + count line (unread from list() or status()). */
+function renderInboxBadge() {
+	const badge = $('#inbox-badge');
+	if (!badge) return;
+	const text = NS ? NS.badgeText(inbox.unread) : '';
+	badge.textContent = text;
+	badge.hidden = !text;
+	if (text) badge.setAttribute('aria-label', t('ui.inbox.badge', { count: inbox.unread }));
+	const countEl = $('#inbox-count');
+	if (countEl) countEl.textContent = inbox.unread > 0 ? t('ui.inbox.unreadCount', { count: inbox.unread }) : '';
+}
+
+async function loadInbox({ refresh = false } = {}) {
+	if (!notifyAvailable()) return;
+	try {
+		const res = await notifyApi.list({ filter: 'all', limit: 100, refresh });
+		inbox.items = Array.isArray(res?.items) ? res.items : [];
+		inbox.topics = Array.isArray(res?.topics) ? res.topics : inbox.topics;
+		inbox.unread = Number(res?.unread) || 0;
+		inbox.error = false;
+	} catch {
+		inbox.error = true;
+	}
+	inbox.loaded = true;
+	renderInbox();
+}
+
+async function loadNotifyStatus() {
+	if (!notifyAvailable()) return;
+	try {
+		const [status, prefs] = await Promise.all([notifyApi.status(), notifyApi.getPrefs()]);
+		inbox.status = status || null;
+		inbox.prefs = prefs || null;
+		if (Array.isArray(prefs?.topics) && prefs.topics.length) inbox.topics = prefs.topics;
+		if (status && Number.isFinite(status.unread)) inbox.unread = status.unread;
+	} catch { /* keep the last known state */ }
+	renderInboxBadge();
+	renderNotifySettings();
+	if (currentPage === 'inbox') renderInbox();
+}
+
+function renderInboxFilters() {
+	const host = $('#inbox-filters');
+	if (!host) return;
+	host.textContent = '';
+	for (const opt of NS.filterOptions(inbox.items, inbox.topics, inbox.filter, t)) {
+		const on = opt.id === inbox.filter;
+		const btn = nh('button', `fchip${on ? ' on' : ''}`, opt.label);
+		btn.type = 'button';
+		btn.setAttribute('role', 'tab');
+		btn.setAttribute('aria-selected', on ? 'true' : 'false');
+		btn.dataset.filter = opt.id;
+		btn.addEventListener('click', () => {
+			inbox.filter = opt.id;
+			renderInbox();
+		});
+		host.appendChild(btn);
+	}
+}
+
+function createInboxRow(entry) {
+	const selected = entry.id === inbox.selectedId;
+	const unread = entry.state === 'delivered';
+	const row = nh('button', `inbox-row${selected ? ' sel' : ''}${unread ? ' unread' : ''}`);
+	row.type = 'button';
+	row.setAttribute('role', 'listitem');
+	row.dataset.id = String(entry.id);
+	if (selected) row.setAttribute('aria-current', 'true');
+	row.addEventListener('click', () => selectInboxEntry(entry.id));
+
+	row.appendChild(nh('span', 'unread-dot'));
+	const text = nh('span', 'inbox-row-text');
+	text.appendChild(nh('span', 'inbox-row-title', entry.title || '—'));
+	const meta = NS.rowMeta(entry, inbox.topics, t, { locale: window.gatecontrol.i18n.getLocale() });
+	const metaEl = nh('span', 'inbox-row-meta');
+	if (meta.priority) {
+		metaEl.appendChild(nh('span', `prio-${entry.priority}`, meta.priority.label));
+		if (meta.text) metaEl.appendChild(document.createTextNode(' · '));
+	}
+	metaEl.appendChild(document.createTextNode(meta.text));
+	text.appendChild(metaEl);
+	row.appendChild(text);
+	return row;
+}
+
+function renderInbox() {
+	if (!notifyAvailable()) return;
+	renderInboxBadge();
+	renderInboxFilters();
+
+	const shown = NS.filterItems(inbox.items, inbox.filter);
+	if (inbox.selectedId !== null && !inbox.items.some((e) => e.id === inbox.selectedId)) inbox.selectedId = null;
+
+	const list = $('#inbox-list');
+	list.textContent = '';
+	shown.forEach((entry) => list.appendChild(createInboxRow(entry)));
+
+	const empty = inbox.loaded ? NS.emptyState({
+		status: inbox.status, prefs: inbox.prefs, total: inbox.items.length, shown: shown.length,
+		filter: inbox.filter, error: inbox.error,
+	}) : null;
+	$('#inbox-empty').hidden = !empty;
+	list.hidden = !!empty;
+	if (empty) {
+		$('#inbox-empty-title').textContent = t(`ui.inbox.${empty}.title`);
+		const hint = empty === 'unsupported' ? t(`push.reason.${inbox.status?.reason || 'unsupported'}`) : t(`ui.inbox.${empty}.hint`);
+		$('#inbox-empty-hint').textContent = hint;
+		const action = $('#inbox-empty-action');
+		action.hidden = !(empty === 'off' || empty === 'error' || empty === 'filtered');
+		action.textContent = empty === 'filtered' ? t('ui.inbox.filterAll') : t(`ui.inbox.${empty}.action`);
+		action.dataset.kind = empty;
+	}
+
+	const hintKey = inbox.items.length ? NS.listHint(inbox.status) : null;
+	const hintEl = $('#inbox-hint');
+	hintEl.hidden = !hintKey;
+	if (hintKey) hintEl.textContent = t(hintKey);
+
+	$('#inbox-read-all').disabled = inbox.unread === 0;
+	renderInboxDetail();
+}
+
+function renderInboxDetail() {
+	const detail = $('#inbox-detail');
+	detail.textContent = '';
+	const entry = inbox.items.find((e) => e.id === inbox.selectedId);
+	$('#inbox-detail-empty').hidden = !!entry || inbox.items.length === 0;
+	if (!entry) return;
+
+	const pill = NS.detailPill(entry, inbox.topics, t);
+	detail.appendChild(nh('span', `chip ${pill.cls}`, pill.label));
+	detail.appendChild(nh('h2', 'disp inbox-detail-title', entry.title || '—'));
+	if (entry.body) detail.appendChild(nh('p', 'inbox-body', entry.body));
+
+	const facts = NS.entryFacts(entry, t, { locale: window.gatecontrol.i18n.getLocale() });
+	if (facts.length) {
+		const grid = nh('div', 'fact-grid');
+		facts.forEach((f) => grid.appendChild(factCard(f.label, f.value)));
+		detail.appendChild(grid);
+	}
+
+	const actions = Array.isArray(entry.actions) ? entry.actions : [];
+	if (actions.length) {
+		const row = nh('div', 'inbox-actions');
+		actions.forEach((a, i) => {
+			const btn = nh('button', `btn ${i === 0 ? 'btn-pri' : 'btn-sec'}`, a.label);
+			btn.type = 'button';
+			btn.dataset.action = a.id;
+			btn.addEventListener('click', async () => {
+				btn.disabled = true;
+				const res = await notifyApi.action(entry.id, a.id).catch((err) => ({ ok: false, error: err?.message }));
+				btn.disabled = false;
+				// The local action happened; a failed confirmation is retried by main.
+				if (!res?.ok && res?.error && !['not_found', 'unknown_action'].includes(res.error)) {
+					showInboxStatus(t('ui.inbox.readFailed'), 'info');
+				} else if (!res?.ok) {
+					showInboxStatus(t('ui.inbox.actionFailed', { error: res?.error || '?' }), 'error');
+				}
+				loadInbox();
+			});
+			row.appendChild(btn);
+		});
+		detail.appendChild(row);
+	}
+}
+
+/** Show one entry and mark it read (here and on the user's other devices). */
+function selectInboxEntry(id) {
+	inbox.selectedId = id;
+	const entry = inbox.items.find((e) => e.id === id);
+	renderInbox();
+	if (entry && entry.state === 'delivered') {
+		entry.state = 'read';
+		inbox.unread = Math.max(0, inbox.unread - 1);
+		renderInbox();
+		notifyApi.read([id]).then((res) => {
+			if (res && Number.isFinite(res.unread)) inbox.unread = res.unread;
+			renderInboxBadge();
+		}).catch(() => {});
+	}
+}
+
+function openInbox(id = null) {
+	if (Number.isSafeInteger(id)) {
+		inbox.selectedId = id;
+		inbox.filter = 'all';
+	}
+	navigateTo('inbox');
+}
+
+if (notifyAvailable()) {
+	$('#inbox-read-all').addEventListener('click', async () => {
+		inbox.items.forEach((e) => { if (e.state === 'delivered') e.state = 'read'; });
+		inbox.unread = 0;
+		renderInbox();
+		const res = await notifyApi.read('all').catch(() => null);
+		if (res && res.ok === false) showInboxStatus(t('ui.inbox.readFailed'), 'info');
+		loadInbox();
+	});
+
+	$('#inbox-empty-action').addEventListener('click', (e) => {
+		const kind = e.currentTarget.dataset.kind;
+		if (kind === 'off') { navigateTo('settings'); selectSettingsTab('notify'); }
+		else if (kind === 'filtered') { inbox.filter = 'all'; renderInbox(); }
+		else loadInbox({ refresh: true });
+	});
+
+	notifyApi.onNew((entry) => {
+		// A toast click selects the entry through onNavigate; a new message
+		// only refreshes the list.
+		if (entry && entry.state === 'delivered' && !entry.updated) inbox.unread += 1;
+		loadInbox();
+	});
+	notifyApi.onUpdate((upd) => {
+		if (upd && Number.isFinite(upd.unread)) inbox.unread = upd.unread;
+		loadInbox();
+	});
+	notifyApi.onStatus((status) => {
+		inbox.status = status || null;
+		if (status && Number.isFinite(status.unread)) inbox.unread = status.unread;
+		renderInboxBadge();
+		renderNotifySettings();
+		if (currentPage === 'inbox') renderInbox();
+	});
+	notifyApi.onNavigate((evt) => {
+		const target = NS.navigateTarget(evt, ['status', 'services', 'inbox', 'logs', 'settings']);
+		if (target.page === 'inbox') {
+			openInbox(target.id);
+			loadInbox();
+		} else {
+			navigateTo(target.page);
+		}
+	});
+
+	loadInbox();
+	loadNotifyStatus();
+} else {
+	$('#nav-inbox')?.setAttribute('hidden', '');
+	$('.set-tab[data-tab="notify"]')?.setAttribute('hidden', '');
+}
+
+// ── Settings → Benachrichtigungen ───────────────────────
+const notifyEl = {
+	enabled: $('#notify-enabled'),
+	direct: $('#notify-direct'),
+	toasts: $('#notify-toasts'),
+	critical: $('#notify-critical'),
+};
+
+function renderNotifySettings() {
+	if (!notifyAvailable()) return;
+	const prefs = inbox.prefs || {};
+	const on = prefs.enabled !== false;
+	notifyEl.enabled.checked = on;
+	notifyEl.direct.checked = prefs.direct !== false;
+	notifyEl.toasts.checked = prefs.toasts !== false;
+	notifyEl.critical.checked = prefs.criticalBypass !== false;
+	[notifyEl.direct, notifyEl.toasts, notifyEl.critical].forEach((sw) => { if (sw) sw.disabled = !on; });
+
+	// Topics on this PC
+	const host = $('#notify-topics');
+	host.textContent = '';
+	const rows = NS.topicRows(inbox.topics, prefs.mutedTopics);
+	rows.forEach((row) => {
+		const line = nh('div', 'set-row compact');
+		line.appendChild(nh('div', 'grow set-row-title', row.label));
+		const sw = nh('label', 'switch');
+		const input = nh('input');
+		input.type = 'checkbox';
+		input.setAttribute('aria-label', row.label);
+		input.dataset.topic = row.id;
+		input.checked = row.on;
+		input.disabled = !on;
+		input.addEventListener('change', () => {
+			saveNotifyPrefs({ mutedTopics: NS.toggleTopic((inbox.prefs || {}).mutedTopics, row.id, input.checked) });
+		});
+		sw.appendChild(input);
+		sw.appendChild(nh('span', 'slider'));
+		line.appendChild(sw);
+		host.appendChild(line);
+	});
+	$('#notify-topics-empty').hidden = rows.length > 0;
+
+	// Status card
+	const view = NS.statusView(inbox.status);
+	const stateEl = $('#notify-state');
+	stateEl.className = `notify-state ${view.tone}`;
+	$('#notify-state-label').textContent = t(view.stateKey);
+	const reason = $('#notify-reason');
+	reason.hidden = !view.reasonKey;
+	if (view.reasonKey) reason.textContent = t(view.reasonKey);
+	$('#notify-server').textContent = view.server || hostOf(view.serverUrl) || '—';
+	$('#notify-via').textContent = view.viaKey ? t(view.viaKey) : '—';
+	$('#notify-since').textContent = view.since ? t('ui.notify.sinceValue', { time: view.since }) : '—';
+	$('#notify-test').disabled = !on || inbox.status?.state !== 'connected';
+
+	const dndBtn = $('#notify-dnd-btn');
+	$('#notify-dnd-text').textContent = view.dnd ? t('push.dndUntil', { time: view.dnd }) : '';
+	dndBtn.textContent = view.dnd ? t('push.tray.dndOff') : t('push.tray.dnd1h');
+	dndBtn.dataset.active = view.dnd ? '1' : '';
+	$('#notify-dnd').hidden = !on;
+
+	// Kill-switch note
+	const note = NS.killSwitchNote(inbox.status);
+	const noteEl = $('#notify-ks-note');
+	noteEl.hidden = !note;
+	if (note) {
+		noteEl.className = `notice ${note.tone === 'warn' ? 'notice-warn notify-note' : 'notice-ok'}`;
+		noteEl.textContent = t(note.key);
+	}
+
+	renderNotifyQuiet();
+}
+
+function renderNotifyQuiet() {
+	const btn = $('#notify-quiet-portal');
+	if (!btn) return;
+	const available = !!currentPortalUrl;
+	btn.disabled = !available;
+	$('#notify-quiet-hint').hidden = available;
+}
+
+async function saveNotifyPrefs(patch) {
+	const status = $('#notify-save-status');
+	const res = await notifyApi.setPrefs(patch).catch((err) => ({ ok: false, error: err?.message }));
+	if (res && res.ok) {
+		inbox.prefs = res.prefs || { ...inbox.prefs, ...patch };
+		status.hidden = true;
+	} else {
+		status.hidden = false;
+		status.textContent = t('ui.notify.saveFailed', { error: res?.error || '?' });
+	}
+	renderNotifySettings();
+	loadNotifyStatus();
+}
+
+if (notifyAvailable()) {
+	notifyEl.enabled.addEventListener('change', (e) => saveNotifyPrefs({ enabled: e.target.checked }));
+	notifyEl.direct.addEventListener('change', (e) => saveNotifyPrefs({ direct: e.target.checked }));
+	notifyEl.toasts.addEventListener('change', (e) => saveNotifyPrefs({ toasts: e.target.checked }));
+	notifyEl.critical.addEventListener('change', (e) => saveNotifyPrefs({ criticalBypass: e.target.checked }));
+
+	$('#notify-test').addEventListener('click', async () => {
+		const status = $('#notify-test-status');
+		const btn = $('#notify-test');
+		btn.disabled = true;
+		const res = await notifyApi.test().catch((err) => ({ ok: false, error: err?.message }));
+		btn.disabled = false;
+		status.hidden = false;
+		status.className = `field-status ${res?.ok ? 'success' : 'error'}`;
+		status.textContent = res?.ok ? t('push.test.sent') : t('push.test.failed', { error: res?.error || '?' });
+		setTimeout(() => { status.hidden = true; }, 6000);
+	});
+
+	$('#notify-dnd-btn').addEventListener('click', async (e) => {
+		const active = e.currentTarget.dataset.active === '1';
+		await notifyApi.dnd(active ? null : { minutes: 60 }).catch(() => null);
+		loadNotifyStatus();
+	});
+
+	$('#notify-quiet-portal').addEventListener('click', () => {
+		if (currentPortalUrl) portal.open();
+	});
+
+	$('.set-tab[data-tab="notify"]')?.addEventListener('click', () => loadNotifyStatus());
 }
 
 clientPolicy.onChange((st) => { onPolicyState(st); });

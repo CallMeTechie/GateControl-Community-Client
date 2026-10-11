@@ -40,8 +40,14 @@ const {
   createSupportBundleSender,
   collectSupportBundle,
   getMachineFingerprint,
+  // Notification center: push stream from the own server, toasts, inbox,
+  // tray entries (core docs/notification-center.md).
+  PushClient,
+  NotificationCenter,
+  notifyMenuItems,
 } = require('@gatecontrol/client-core');
 const { shortDeviceId, withDeviceId } = require('./device-id');
+const { setupNotifications } = require('./notifications');
 
 const { i18n } = require('@gatecontrol/client-core');
 const { t, setLocale, getLocale, resolveLocale } = i18n;
@@ -76,6 +82,8 @@ let clientPolicy = null;
 let connectionMonitor = null;
 let updater = null;
 let supportBundle = null; // "Support-Paket senden" (core src/support/sender.js)
+let notifications = null; // notification center (./notifications.js), one per app lifetime
+let trayState = 'disconnected'; // last state drawn in the tray (refresh on unread / DND changes)
 let pendingUpdate = null;
 // Version for which the "Update erforderlich" notification was already shown
 // in this session (shown again on every app start while still required).
@@ -111,9 +119,9 @@ const WG_CONFIG_FILE = path.join(WG_CONFIG_DIR, 'gatecontrol0.conf');
 // Opens the portal (https only). Asks the server for a fresh one-time login
 // link right before every open and falls back to the plain portal URL
 // (core utils/portal.js). Used by auto-open, tray and the "Portal öffnen" button.
-function openPortalSafe() {
+function openPortalSafe(portalPath) {
 	return createPortalOpener({ apiClient, getPortalUrl: () => portalUrl, log })
-		.open()
+		.open(typeof portalPath === 'string' ? { path: portalPath } : undefined)
 		.catch(() => false);
 }
 
@@ -123,9 +131,11 @@ function getIcon(state) {
 }
 
 function updateTray(state) {
+	trayState = state;
 	if (!tray) return;
 
-	tray.setImage(getIcon(state));
+	// Unread push notifications: dot on the tray icon.
+	tray.setImage(createTrayIcon(nativeImage, state, { badge: !!notifications?.badge() }));
 
 	const statusText = state === 'connected' ? t('status.connected')
 		: state === 'connecting' ? t('status.connecting')
@@ -146,7 +156,12 @@ function updateTray(state) {
 		const tx = tunnelState.txBytes || 0;
 		tooltip += `\n↓ ${formatBytesShort(rx)}  ↑ ${formatBytesShort(tx)}`;
 	}
+	const unreadLine = notifications?.tooltip(t);
+	if (unreadLine) tooltip += `\n${unreadLine}`;
 	tray.setToolTip(tooltip);
+
+	// "Mitteilungen · n neu" and "Nicht stören für 1 Stunde" (core notifyMenuItems)
+	const notifyItems = notifications ? notifications.menuItems(t) : [];
 
 	// Ready update: a mandatory one goes to the top, an optional one stays below
 	const updateItems = updateMenuItems({
@@ -164,6 +179,7 @@ function updateTray(state) {
 		},
 		{ type: 'separator' },
 		...updateItems.top,
+		...(notifyItems.length ? [...notifyItems, { type: 'separator' }] : []),
 		{
 			label: state === 'connected' ? '⬤ ' + t('status.connected') : '○ ' + t('status.disconnected'),
 			enabled: false,
@@ -324,7 +340,7 @@ async function connectTunnel() {
 					log.error('Config-Update abgelehnt, behalte lokale Config: ' + msg);
 					updateTray('disconnected');
 					broadcastState('error', msg);
-					showNotification(t('notify.connectionError'), msg);
+					showNotification(t('notify.connectionError'), msg, { collapseKey: 'tunnel' });
 					return;
 				}
 				if (validation.warnings && validation.warnings.length > 0) {
@@ -366,7 +382,7 @@ async function connectTunnel() {
 
 		connectionMonitor.start();
 
-		showNotification(t('notify.connected'), t('notify.connected'));
+		showNotification(t('notify.connected'), t('notify.connected'), { collapseKey: 'tunnel' });
 		log.info('Tunnel erfolgreich verbunden');
 
 		// Report OS hostname for internal DNS (best-effort, once per session).
@@ -403,7 +419,7 @@ async function connectTunnel() {
 		log.error('Tunnel-Verbindung fehlgeschlagen:', err);
 		updateTray('disconnected');
 		broadcastState('error', err.message);
-		showNotification(t('notify.connectionError'), err.message);
+		showNotification(t('notify.connectionError'), err.message, { collapseKey: 'tunnel' });
 	}
 }
 
@@ -436,7 +452,7 @@ async function disconnectTunnel() {
 		updateTray('disconnected');
 		broadcastState('disconnected');
 
-		showNotification(t('notify.disconnected'), t('notify.disconnected'));
+		showNotification(t('notify.disconnected'), t('notify.disconnected'), { collapseKey: 'tunnel' });
 		log.info('Tunnel getrennt');
 
 	} catch (err) {
@@ -543,7 +559,7 @@ async function handleDisconnect() {
 			broadcastState('connected');
 			connectionMonitor.start();
 
-			showNotification(t('notify.reconnected'), t('notify.reconnected'));
+			showNotification(t('notify.reconnected'), t('notify.reconnected'), { collapseKey: 'tunnel' });
 			log.info('Reconnect erfolgreich');
 			return;
 		} catch (err) {
@@ -555,20 +571,20 @@ async function handleDisconnect() {
 	isReconnecting = false;
 	updateTray('disconnected');
 	broadcastState('error', t('notify.reconnectFailed'));
-	showNotification(t('notify.connectionError'), t('notify.reconnectFailed'));
+	showNotification(t('notify.connectionError'), t('notify.reconnectFailed'), { collapseKey: 'tunnel', force: true });
 }
 
 // ── Notifications ────────────────────────────────────────────
-function showNotification(title, body) {
-	if (Notification.isSupported()) {
-		new Notification({
-			title: `GateControl: ${title}`,
-			body,
-			icon: app.isPackaged
-				? path.join(process.resourcesPath, 'resources', 'icons', 'app-icon.png')
-				: path.join(__dirname, '..', '..', 'build', 'icon.png'),
-		}).show();
+// The app's own notifications go through the notification center: same toast
+// code as push messages, respects "Nicht stören" and "Windows-Benachrichtigung
+// anzeigen" unless opts.force (messages the user must see).
+function showNotification(title, body, { priority = 'normal', collapseKey = null, force = false, onClick = null } = {}) {
+	if (!notifications) {
+		// Before the services exist (should not happen) fall back to a plain toast.
+		if (Notification.isSupported()) new Notification({ title: `GateControl: ${title}`, body }).show();
+		return null;
 	}
+	return notifications.notify({ title: `GateControl: ${title}`, body, priority, collapseKey, force, onClick });
 }
 
 // ── Peer-Ablauf-Warnung ─────────────────────────────────
@@ -608,7 +624,7 @@ function showUpdateNotification(release) {
 	if (release.mandatory) {
 		notifyMandatoryUpdate(release);
 	} else {
-		showNotification(t('update.available', { version: release.version }), t('update.readyToInstall'));
+		showNotification(t('update.available', { version: release.version }), t('update.readyToInstall'), { collapseKey: 'update' });
 	}
 	mainWindow?.webContents.send('update-ready', {
 		version: release.version,
@@ -624,7 +640,8 @@ function notifyMandatoryUpdate(info) {
 	if (!info?.version || mandatoryNotifiedVersion === info.version) return;
 	mandatoryNotifiedVersion = info.version;
 	const notice = mandatoryNotice(info, t);
-	showNotification(notice.title, notice.body);
+	// Must be seen: shown during "Nicht stören" and with toasts switched off.
+	showNotification(notice.title, notice.body, { collapseKey: 'update', force: true, onClick: () => showWindow() });
 }
 
 async function installUpdate() {
@@ -676,6 +693,9 @@ function broadcastState(status, error = null) {
 	};
 
 	mainWindow?.webContents.send('tunnel-state', state);
+	// Push stream follows the tunnel (path "via", mode vpn_only); only an
+	// up/down change reconnects it, not the stats broadcasts.
+	notifications?.tunnelChanged(tunnelState.connected);
 }
 
 // ── App Lifecycle ────────────────────────────────────────────
@@ -704,6 +724,24 @@ async function initServices() {
 	});
 	apiClient.onPolicyVersion = (v) => { clientPolicy.noteVersion(v); };
 	clientPolicy.onChange(() => { applyClientPolicy().catch((err) => log.warn('Client policy apply failed:', err.message)); });
+
+	// Notification center: one push client + center for the app's lifetime
+	// (apiClient.configure() changes URL/token in place, a server:setup resets
+	// the center through the core IPC handlers).
+	notifications = setupNotifications({
+		app, store, log, apiClient,
+		PushClient, NotificationCenter, notifyMenuItems,
+		protocol: 'gatecontrol-community',
+		toastImagePath: path.join(RESOURCES_PATH, 'icons', 'app-icon.png'),
+		showWindow: () => showWindow(),
+		openPortal: (portalPath) => openPortalSafe(portalPath),
+		isTunnelUp: () => tunnelState.connected,
+		isKillSwitchActive: () => !!(killSwitch?.enabled || store.get('tunnel.killSwitch', false)),
+		getWgConfigPath: () => WG_CONFIG_FILE,
+		// E2E runs must not register a URL handler on the test machine.
+		registerProtocol: !e2e,
+		onChange: () => updateTray(trayState),
+	});
 	// Last known policy first (works offline)
 	await applyClientPolicy({ startup: true });
 
@@ -714,10 +752,7 @@ async function initServices() {
 		onPeerDisabled: async (peerInfo) => {
 			log.warn(`Peer disabled on server (id: ${peerInfo?.id}, name: ${peerInfo?.name}) — disconnecting`);
 			await disconnectTunnel();
-			new Notification({
-				title: 'GateControl',
-				body: t('notify.peerDisabled'),
-			}).show();
+			showNotification(t('notify.disconnected'), t('notify.peerDisabled'), { collapseKey: 'tunnel', force: true });
 		},
 		onStats: (stats) => {
 			const now = Date.now();
@@ -804,10 +839,12 @@ app.whenReady().then(async () => {
 		getTunnelState: () => tunnelState,
 		wgConfigFile: WG_CONFIG_FILE,
 		edition: 'community',
+		// notify:* channels + events, reset on server:setup (core, opt-in)
+		notificationCenter: notifications?.notificationCenter,
 		// Result of a bundle the admin requested (the button shows its own status).
 		onSupportResult: (res) => {
 			if (!res || res.cancelled) return;
-			new Notification({ title: 'GateControl', body: res.success ? t('support.success') : res.error }).show();
+			showNotification(t('support.title'), res.success ? t('support.success') : res.error, { force: true });
 		},
 	};
 	// One sender for the Settings button and admin requests (connection monitor).
@@ -845,6 +882,12 @@ app.whenReady().then(async () => {
 
 	// Fenster
 	createWindow();
+
+	// Push stream (no-op while switched off or without a server).
+	notifications.start();
+	// Started by a toast button while the app was not running: the URL is in
+	// argv; its one-time token is unknown to this process, so the inbox opens.
+	if (notifications.handleArgv(process.argv)) log.info('Started from a notification');
 
 	// Ask the server for the current client policy (also polled, and on
 	// every heartbeat/permissions answer with a new policyVersion).
@@ -937,7 +980,10 @@ app.whenReady().then(async () => {
 	log.info('GateControl Client bereit');
 });
 
-app.on('second-instance', () => {
+// A second start (shortcut, autostart, or a toast button: <protocol>://notify/…)
+// only brings this instance to the front or performs the toast action.
+app.on('second-instance', (_event, argv) => {
+	if (notifications?.handleArgv(argv)) return;
 	showWindow();
 });
 
@@ -949,6 +995,9 @@ async function quitApp() {
 	app.isQuitting = true;
 
 	updater?.stop();
+
+	// Close the push stream (flushes pending delivery confirmations).
+	notifications?.stop();
 
 	if (tunnelState.connected) {
 		await disconnectTunnel();
@@ -978,4 +1027,6 @@ async function quitApp() {
 
 app.on('before-quit', async () => {
 	app.isQuitting = true;
+	// Quit without quitApp() (e.g. Windows shutdown): close the push stream too.
+	notifications?.stop();
 });

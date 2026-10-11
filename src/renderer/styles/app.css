@@ -509,6 +509,76 @@ html[data-theme="light"] .gc .icon-moon { display: block; }
 .gc .sb-item:empty { display: none; }
 .gc .sb-dot { width: 7px; height: 7px; }
 
+
+/* ── Mitteilungen (notification center inbox) ─────────── */
+.gc .nav { position: relative; }
+.gc .count-alert { background: var(--warn); color: var(--bg); }
+.gc .inbox { display: flex; height: 100%; min-height: 420px; }
+.gc .inbox-list-col { width: 360px; flex-shrink: 0; border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+.gc .inbox-list-head { padding: 28px 20px 14px; display: flex; flex-direction: column; gap: 12px; }
+.gc .inbox-head { display: flex; align-items: flex-start; gap: 12px; }
+.gc .inbox-head .page-title { font-size: 26px; }
+.gc .inbox-hint { padding: 10px 12px; border-radius: 10px; background: var(--panel2); color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+.gc .fchips { display: flex; flex-wrap: wrap; gap: 6px; }
+.gc .fchip { height: 30px; padding: 0 12px; border-radius: 99px; border: 1px solid var(--line2); background: transparent; color: var(--muted); font-size: 12.5px; font-weight: 500; white-space: nowrap; }
+.gc .fchip:hover { color: var(--text); border-color: var(--faint); }
+.gc .fchip.on { border-color: var(--acc); background: var(--acc-bg); color: var(--acc-t); font-weight: 600; }
+.gc .fchip:focus-visible, .gc .inbox-row:focus-visible { outline: 2px solid var(--info); outline-offset: 2px; }
+.gc .inbox-list { flex-grow: 1; min-height: 0; padding: 0 12px 16px; display: flex; flex-direction: column; gap: 4px; }
+.gc .inbox-row { display: flex; align-items: flex-start; gap: 12px; width: 100%; padding: 12px; border: 1px solid transparent; border-radius: 12px; background: transparent; text-align: left; }
+.gc .inbox-row:hover { background: var(--panel2); }
+.gc .inbox-row.sel { background: var(--panel); border-color: var(--line2); }
+.gc .inbox-row .unread-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 7px; flex-shrink: 0; background: transparent; }
+.gc .inbox-row.unread .unread-dot { background: var(--acc); }
+.gc .inbox-row-text { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.gc .inbox-row-title { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gc .inbox-row.unread .inbox-row-title { color: var(--text); font-weight: 600; }
+.gc .inbox-row-meta { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gc .inbox-row-meta .prio-critical { color: var(--err); font-weight: 700; }
+.gc .inbox-row-meta .prio-high { color: var(--warn); font-weight: 700; }
+.gc .inbox-empty { display: flex; flex-direction: column; align-items: center; gap: 8px; font-size: 13px; }
+.gc .inbox-empty[hidden] { display: none; }
+.gc .inbox-empty strong { color: var(--text); font-size: 14px; font-weight: 600; }
+.gc .inbox-detail-col { flex-grow: 1; min-width: 0; padding: 28px 32px; display: flex; flex-direction: column; gap: 16px; }
+.gc .inbox-detail { display: flex; flex-direction: column; gap: 16px; }
+.gc .inbox-detail:empty { display: none; }
+.gc .inbox-detail > .chip { align-self: flex-start; }
+.gc .inbox-detail-title { font-size: 26px; font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; }
+.gc .inbox-body { color: var(--muted); line-height: 1.55; max-width: 620px; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+.gc .fact-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; max-width: 640px; }
+.gc .fact-card { padding: 12px 14px; min-width: 0; }
+.gc .fact-val { margin-top: 4px; font-weight: 600; overflow-wrap: anywhere; }
+.gc .inbox-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.gc .inbox-sync-hint { margin-top: auto; font-size: 12.5px; color: var(--faint); }
+@container main (max-width: 819px) {
+	.gc .inbox-list-col { width: 290px; }
+	.gc .inbox-detail-col { padding: 24px; }
+	.gc .fact-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* ── Einstellungen → Benachrichtigungen ───────────────── */
+.gc .set-panel.set-panel-wide { max-width: 1040px; }
+.gc .notify-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; align-items: start; }
+.gc .notify-col { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.gc .set-list-head { padding: 16px 0 4px; }
+.gc .set-row.compact { padding: 10px 0; }
+.gc .notify-topics-empty { padding: 4px 0 16px; }
+.gc .notify-state { display: flex; align-items: center; gap: 8px; }
+.gc .notify-state.ok .dot { background: var(--acc); box-shadow: 0 0 0 4px var(--acc-bg); }
+.gc .notify-state.warn .dot { background: var(--warn); box-shadow: 0 0 0 4px var(--warn-bg); }
+.gc .notify-state.err .dot { background: var(--err); box-shadow: 0 0 0 4px var(--err-bg); }
+.gc .notify-dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 16px; align-items: baseline; }
+.gc .notify-dl dd { overflow-wrap: anywhere; }
+.gc .notify-dnd { display: flex; align-items: center; gap: 10px; }
+.gc #notify-dnd-text:empty { display: none; }
+.gc .notice-ok { background: var(--acc-bg); color: var(--acc-t); }
+.gc .notice-warn.notify-note { color: var(--warn); }
+.gc #notify-ks-note { font-size: 13px; overflow-wrap: anywhere; }
+@container main (max-width: 1019px) {
+	.gc .notify-grid { grid-template-columns: minmax(0, 1fr); }
+	.gc .set-panel.set-panel-wide { max-width: 760px; }
+}
+
 /* ── Kompakte Fenster: Seitenleiste als Icon-Leiste ──── */
 @media (max-width: 899px) {
 	.gc .sidebar { width: 68px; padding: 16px 10px; align-items: stretch; }
@@ -522,6 +592,8 @@ html[data-theme="light"] .gc .icon-moon { display: block; }
 	.gc .settings-body { padding: 28px 24px; }
 	.gc .page-pad { padding: 24px 24px 28px; }
 	.gc .set-grid { grid-template-columns: minmax(0, 1fr); }
+	/* unread notifications: the count becomes a dot on the icon */
+	.gc .nav .count-alert:not([hidden]) { display: block; position: absolute; top: 7px; right: 9px; min-width: 0; width: 9px; height: 9px; padding: 0; font-size: 0; }
 }
 
 /* ── Client policy ("Vom Administrator festgelegt") ── */
