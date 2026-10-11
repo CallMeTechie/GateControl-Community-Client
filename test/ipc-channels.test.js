@@ -142,7 +142,7 @@ describe('Community IPC channels', { skip }, () => {
 
 	it('main passes openPortal so the portal button gets a one-time login link', () => {
 		const main = fs.readFileSync(path.join(ROOT, 'src', 'main', 'main.js'), 'utf8');
-		assert.match(main, /openPortal: \(\) => openPortalSafe\(\)/);
+		assert.match(main, /openPortal: \(opts\) => openPortalSafe\(opts\)/); // optional { next: '/portal#<tab>' }
 		assert.match(main, /createPortalOpener\(/);
 	});
 

@@ -467,6 +467,7 @@ html[data-theme="light"] .gc .icon-moon { display: block; }
 .gc .set-card-row { flex-direction: row; align-items: center; }
 .gc .set-card-title { font-size: 15px; font-weight: 600; }
 .gc .set-card-desc { color: var(--muted); font-size: 13px; margin-top: -8px; }
+.gc .notify-quiet-value { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .gc .set-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
 .gc .set-list { padding: 4px 20px; }
 .gc .set-row { display: flex; align-items: center; gap: 16px; padding: 16px 0; }
