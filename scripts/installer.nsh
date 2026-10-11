@@ -329,5 +329,10 @@
 
     ; RDP-Freigabe dieser Edition (Altregel nur ohne andere Edition)
     !insertmacro GC_CLEANUP_RDP_FIREWALL
+
+    ; URL-Protokoll der Knoepfe in Windows-Benachrichtigungen. Die App
+    ; registriert es selbst (setAsDefaultProtocolClient, HKCU); bei einem
+    ; Update bleibt es erhalten, der Pfad zur Exe aendert sich nicht.
+    DeleteRegKey HKCU "Software\Classes\gatecontrol-community"
   ${EndIf}
 !macroend

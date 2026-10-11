@@ -75,6 +75,25 @@ function preloadInvokedChannels() {
 	return [...invoked];
 }
 
+// Stand-in for core NotificationCenter (the IPC layer only forwards to it).
+function fakeNotificationCenter() {
+	return {
+		pushClient: { requestTest: async () => ({ ok: true, seq: 130 }) },
+		on() {},
+		list: () => ({ items: [], unread: 0, topics: [] }),
+		refresh: async () => ({ ok: true }),
+		markRead: async () => ({ ok: true, updated: 0, unread: 0 }),
+		performAction: async () => ({ ok: true }),
+		getPrefs: () => ({ enabled: true }),
+		setPrefs: () => ({ ok: true, prefs: {} }),
+		status: () => ({ state: 'disabled', reason: 'not_configured' }),
+		unreadCount: () => 0,
+		dndState: () => ({ active: false, until: null }),
+		setDnd: () => ({ ok: true, active: false, until: null }),
+		resetForNewServer() {},
+	};
+}
+
 describe('Community IPC channels', { skip }, () => {
 	function register(extra = {}) {
 		const { registerBaseHandlers } = require(path.join(coreDir, 'src', 'ipc', 'base-handlers.js'));
@@ -100,6 +119,8 @@ describe('Community IPC channels', { skip }, () => {
 			installUpdate() {}, getTunnelState: () => ({}),
 			openPortal: async () => true,
 			wgConfigFile: 'wg.conf',
+			// main.js always passes the notification center (notify:* channels)
+			notificationCenter: fakeNotificationCenter(),
 			...extra,
 		});
 		return handlers;
@@ -113,6 +134,10 @@ describe('Community IPC channels', { skip }, () => {
 		const handlers = register();
 		for (const ch of own) assert.equal(handlers[ch], undefined, `${ch} would be registered twice`);
 		for (const ch of invoked) assert.ok(handlers[ch] || own.includes(ch), ch);
+		for (const ch of ['notify:list', 'notify:read', 'notify:action', 'notify:prefs:get', 'notify:prefs:set', 'notify:test', 'notify:status', 'notify:dnd']) {
+			assert.ok(invoked.includes(ch), `preload: ${ch}`);
+			assert.equal(typeof handlers[ch], 'function', ch);
+		}
 	});
 
 	it('main passes openPortal so the portal button gets a one-time login link', () => {
