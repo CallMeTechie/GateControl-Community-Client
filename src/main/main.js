@@ -44,6 +44,7 @@ const {
   // tray entries (core docs/notification-center.md).
   PushClient,
   NotificationCenter,
+  PushControl,
   notifyMenuItems,
 } = require('@gatecontrol/client-core');
 const { shortDeviceId, withDeviceId } = require('./device-id');
@@ -83,6 +84,8 @@ let connectionMonitor = null;
 let updater = null;
 let supportBundle = null; // "Support-Paket senden" (core src/support/sender.js)
 let notifications = null; // notification center (./notifications.js), one per app lifetime
+let configPollTimer = null; // config/check poll (see scheduleConfigPoll)
+let configCheck = null; // running config check (shared by poll and push)
 let trayState = 'disconnected'; // last state drawn in the tray (refresh on unread / DND changes)
 let pendingUpdate = null;
 // Version for which the "Update erforderlich" notification was already shown
@@ -119,9 +122,14 @@ const WG_CONFIG_FILE = path.join(WG_CONFIG_DIR, 'gatecontrol0.conf');
 // Opens the portal (https only). Asks the server for a fresh one-time login
 // link right before every open and falls back to the plain portal URL
 // (core utils/portal.js). Used by auto-open, tray and the "Portal öffnen" button.
-function openPortalSafe(portalPath) {
+// Push actions (open_portal: target) and "Ruhezeiten im Portal ändern" pass
+// a portal tab ('/portal#benachrichtigungen'); it goes to the server as `next`.
+function openPortalSafe(target) {
+	let opts;
+	if (typeof target === 'string') opts = { path: target };
+	else if (target && typeof target.next === 'string') opts = { next: target.next };
 	return createPortalOpener({ apiClient, getPortalUrl: () => portalUrl, log })
-		.open(typeof portalPath === 'string' ? { path: portalPath } : undefined)
+		.open(opts)
 		.catch(() => false);
 }
 
@@ -698,6 +706,49 @@ function broadcastState(status, error = null) {
 	notifications?.tunnelChanged(tunnelState.connected);
 }
 
+// ── Config check (config/check) ──────────────────────────────
+// New WireGuard config from the server: validate (fail-closed), write, and
+// reconnect while the tunnel is up. Polled every app.configPollInterval,
+// every 30 min while the push stream delivers config_changed (core
+// PushControl.relaxedInterval), and right away on config_changed.
+function checkConfigNow() {
+	if (configCheck) return configCheck;
+	configCheck = (async () => {
+		try {
+			const newConfig = await apiClient.checkConfigUpdate();
+			if (!newConfig) return;
+			// Validate before applying — fail-closed via shared validator.
+			const validation = validateWgConfig(newConfig);
+			if (!validation.ok) {
+				log.warn('Config update rejected: ' + validation.errors.join(', '));
+				return;
+			}
+			if (validation.warnings && validation.warnings.length > 0) {
+				log.warn('Config update warnings: ' + validation.warnings.join(', '));
+			}
+			log.info('Neue Konfiguration vom Server erhalten');
+			await wgService.writeConfig(WG_CONFIG_FILE, newConfig);
+			if (tunnelState.connected) {
+				await disconnectTunnel();
+				await connectTunnel();
+			}
+		} catch (err) {
+			log.debug('Config-Poll fehlgeschlagen:', err.message);
+		}
+	})().finally(() => { configCheck = null; });
+	return configCheck;
+}
+
+function scheduleConfigPoll() {
+	if (configPollTimer) clearTimeout(configPollTimer);
+	const normal = store.get('app.configPollInterval', 300) * 1000;
+	const control = notifications?.pushControl;
+	const ms = control ? control.relaxedInterval('config', normal) : normal;
+	configPollTimer = setTimeout(() => {
+		checkConfigNow().finally(() => scheduleConfigPoll());
+	}, ms);
+}
+
 // ── App Lifecycle ────────────────────────────────────────────
 async function initServices() {
 	const fs = require('fs');
@@ -774,6 +825,18 @@ async function initServices() {
 		log,
 	});
 
+	// Control events of the push stream (core PushControl): policy changes,
+	// support-bundle requests, peer disabled and config changes arrive by push;
+	// the policy, peer-info and config polls stay as the fallback (stretched
+	// to 30 / 15 / 30 min while the stream delivers them).
+	notifications.attachControl({
+		PushControl,
+		clientPolicy,
+		connectionMonitor,
+		onConfigChanged: () => checkConfigNow(),
+		onModeChange: () => { if (configPollTimer) scheduleConfigPoll(); },
+	});
+
 	const savedLocale = store.get('app.locale');
 	if (savedLocale) {
 		setLocale(savedLocale);
@@ -835,7 +898,8 @@ app.whenReady().then(async () => {
 		toggleKillSwitch,
 		toggleRdpAllow,
 		installUpdate,
-		openPortal: () => openPortalSafe(),
+		// portal:open, optionally { next: '/portal#<tab>' } (validated by core)
+		openPortal: (opts) => openPortalSafe(opts),
 		getTunnelState: () => tunnelState,
 		wgConfigFile: WG_CONFIG_FILE,
 		edition: 'community',
@@ -918,34 +982,8 @@ app.whenReady().then(async () => {
 		}
 	}
 
-	// Config-Polling
-	const pollInterval = store.get('app.configPollInterval', 300) * 1000;
-	if (store.get('server.url', '')) {
-		setInterval(async () => {
-			try {
-				const newConfig = await apiClient.checkConfigUpdate();
-				if (newConfig) {
-					// Validate before applying — fail-closed via shared validator.
-					const validation = validateWgConfig(newConfig);
-					if (!validation.ok) {
-						log.warn('Config update rejected: ' + validation.errors.join(', '));
-					} else {
-						if (validation.warnings && validation.warnings.length > 0) {
-							log.warn('Config update warnings: ' + validation.warnings.join(', '));
-						}
-						log.info('Neue Konfiguration vom Server erhalten');
-						await wgService.writeConfig(WG_CONFIG_FILE, newConfig);
-						if (tunnelState.connected) {
-							await disconnectTunnel();
-							await connectTunnel();
-						}
-					}
-				}
-			} catch (err) {
-				log.debug('Config-Poll fehlgeschlagen:', err.message);
-			}
-		}, pollInterval);
-	}
+	// Config-Polling (fallback; config_changed by push checks right away)
+	if (store.get('server.url', '')) scheduleConfigPoll();
 
 	// Auto-Update. Mandatory updates (server: below the minimum version) are
 	// never installed automatically: the installer ends the app and the
