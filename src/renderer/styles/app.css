@@ -595,6 +595,7 @@ html[data-theme="light"] .gc .icon-moon { display: block; }
 	.gc .set-grid { grid-template-columns: minmax(0, 1fr); }
 	/* unread notifications: the count becomes a dot on the icon */
 	.gc .nav .count-alert:not([hidden]) { display: block; position: absolute; top: 7px; right: 9px; min-width: 0; width: 9px; height: 9px; padding: 0; font-size: 0; }
+	.gc .nav #chats-badge:not([hidden]) { display: block; position: absolute; top: 7px; right: 9px; min-width: 0; width: 9px; height: 9px; padding: 0; font-size: 0; background: var(--acc); }
 }
 
 /* ── Client policy ("Vom Administrator festgelegt") ── */

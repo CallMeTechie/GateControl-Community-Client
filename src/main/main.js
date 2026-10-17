@@ -46,9 +46,14 @@ const {
   NotificationCenter,
   PushControl,
   notifyMenuItems,
+  // Chats (GateControl Messenger): data, live events, outbox, chat toasts
+  // (core docs/messenger.md).
+  MessengerService,
+  ChatNotifier,
 } = require('@gatecontrol/client-core');
 const { shortDeviceId, withDeviceId } = require('./device-id');
 const { setupNotifications } = require('./notifications');
+const { setupMessenger } = require('./messenger');
 
 const { i18n } = require('@gatecontrol/client-core');
 const { t, setLocale, getLocale, resolveLocale } = i18n;
@@ -84,6 +89,7 @@ let connectionMonitor = null;
 let updater = null;
 let supportBundle = null; // "Support-Paket senden" (core src/support/sender.js)
 let notifications = null; // notification center (./notifications.js), one per app lifetime
+let chats = null; // messenger (./messenger.js), one per app lifetime
 let configPollTimer = null; // config/check poll (see scheduleConfigPoll)
 let configCheck = null; // running config check (shared by poll and push)
 let trayState = 'disconnected'; // last state drawn in the tray (refresh on unread / DND changes)
@@ -143,7 +149,7 @@ function updateTray(state) {
 	if (!tray) return;
 
 	// Unread push notifications: dot on the tray icon.
-	tray.setImage(createTrayIcon(nativeImage, state, { badge: !!notifications?.badge() }));
+	tray.setImage(createTrayIcon(nativeImage, state, { badge: !!notifications?.badge() || !!chats?.badge() }));
 
 	const statusText = state === 'connected' ? t('status.connected')
 		: state === 'connecting' ? t('status.connecting')
@@ -166,10 +172,15 @@ function updateTray(state) {
 	}
 	const unreadLine = notifications?.tooltip(t);
 	if (unreadLine) tooltip += `\n${unreadLine}`;
+	const chatLine = chats?.tooltip(t);
+	if (chatLine) tooltip += `\n${chatLine}`;
 	tray.setToolTip(tooltip);
 
 	// "Mitteilungen · n neu" and "Nicht stören für 1 Stunde" (core notifyMenuItems)
-	const notifyItems = notifications ? notifications.menuItems(t) : [];
+	const notifyItems = [
+		...(chats ? chats.menuItems(t, () => { showWindow(); mainWindow?.webContents.send('navigate', 'chats'); }) : []),
+		...(notifications ? notifications.menuItems(t) : []),
+	];
 
 	// Ready update: a mandatory one goes to the top, an optional one stays below
 	const updateItems = updateMenuItems({
@@ -793,6 +804,19 @@ async function initServices() {
 		registerProtocol: !e2e,
 		onChange: () => updateTray(trayState),
 	});
+
+	// Chats: messenger on the same push stream, chat toasts with reply field.
+	chats = setupMessenger({
+		store, log, apiClient, notifications,
+		MessengerService, ChatNotifier,
+		protocol: 'gatecontrol-community',
+		toastImagePath: path.join(RESOURCES_PATH, 'icons', 'app-icon.png'),
+		dataDir: app.getPath('userData'),
+		tmpDir: app.getPath('temp'),
+		showWindow: () => showWindow(),
+		getMainWindow: () => mainWindow,
+		onChange: () => updateTray(trayState),
+	});
 	// Last known policy first (works offline)
 	await applyClientPolicy({ startup: true });
 
@@ -905,6 +929,9 @@ app.whenReady().then(async () => {
 		edition: 'community',
 		// notify:* channels + events, reset on server:setup (core, opt-in)
 		notificationCenter: notifications?.notificationCenter,
+		// chat:* channels + events, reset on server:setup (core, opt-in)
+		messenger: chats?.messenger,
+		chatNotifier: chats?.chatNotifier,
 		// Result of a bundle the admin requested (the button shows its own status).
 		onSupportResult: (res) => {
 			if (!res || res.cancelled) return;
@@ -952,6 +979,8 @@ app.whenReady().then(async () => {
 	// Started by a toast button while the app was not running: the URL is in
 	// argv; its one-time token is unknown to this process, so the inbox opens.
 	if (notifications.handleArgv(process.argv)) log.info('Started from a notification');
+	// Chats: availability check, live events, chat toasts.
+	chats.start();
 
 	// Ask the server for the current client policy (also polled, and on
 	// every heartbeat/permissions answer with a new policyVersion).
@@ -1036,6 +1065,8 @@ async function quitApp() {
 
 	// Close the push stream (flushes pending delivery confirmations).
 	notifications?.stop();
+	// Chats: save the cache, leave the open chat.
+	chats?.stop();
 
 	if (tunnelState.connected) {
 		await disconnectTunnel();
@@ -1067,4 +1098,5 @@ app.on('before-quit', async () => {
 	app.isQuitting = true;
 	// Quit without quitApp() (e.g. Windows shutdown): close the push stream too.
 	notifications?.stop();
+	chats?.stop();
 });

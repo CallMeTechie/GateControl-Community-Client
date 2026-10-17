@@ -3,7 +3,7 @@
  * UI-Logik und State Management
  */
 
-const { tunnel, server, config, killSwitch, rdpAllow, autostart, logs, update, services, traffic, dns, shell, peer, permissions, onPortalUrl, portal, getVersion, getDeviceId, window: win, locale, policy: clientPolicy, notify: notifyApi } = window.gatecontrol;
+const { tunnel, server, config, killSwitch, rdpAllow, autostart, logs, update, services, traffic, dns, shell, peer, permissions, onPortalUrl, portal, getVersion, getDeviceId, window: win, locale, policy: clientPolicy, notify: notifyApi, chat: chatApi } = window.gatecontrol;
 const { t } = window.gatecontrol.i18n;
 
 // Aktive Berechtigungen (werden beim Connect geladen)
@@ -179,9 +179,11 @@ $$('.nav-btn').forEach(btn => {
 });
 
 let currentPage = 'status';
+let chatView = null; // chat-view.js instance (CHATS section below)
 
 function navigateTo(page) {
 	if (!$(`#page-${page}`)) page = 'status';
+	const prev = currentPage;
 	currentPage = page;
 	$$('.nav-btn').forEach(b => {
 		const on = b.dataset.page === page;
@@ -197,6 +199,9 @@ function navigateTo(page) {
 	if (page === 'logs') refreshLogs();
 	if (page === 'status') redrawBandwidthGraph();
 	if (page === 'inbox') renderInbox();
+	// Chats: "active" / read marks only while the page is shown
+	if (page === 'chats' && prev !== 'chats') chatView?.show();
+	else if (prev === 'chats' && page !== 'chats') chatView?.hide();
 }
 
 // Navigation aus dem Main Process
@@ -250,6 +255,7 @@ function updateDOM() {
 	renderUpdateCard();
 	renderInbox();
 	renderNotifySettings();
+	chatView?.relabel();
 }
 
 // Locale Init
@@ -1846,7 +1852,9 @@ if (notifyAvailable()) {
 		if (currentPage === 'inbox') renderInbox();
 	});
 	notifyApi.onNavigate((evt) => {
-		const target = NS.navigateTarget(evt, ['status', 'services', 'inbox', 'logs', 'settings']);
+		const pages = ['status', 'services', 'inbox', 'logs', 'settings'];
+		if (chatView && !$('#nav-chats').hidden) pages.push('chats');
+		const target = NS.navigateTarget(evt, pages);
 		if (target.page === 'inbox') {
 			openInbox(target.id);
 			loadInbox();
@@ -2008,6 +2016,39 @@ if (notifyAvailable()) {
 
 	$('.set-tab[data-tab="notify"]')?.addEventListener('click', () => { loadNotifyStatus(); refreshNotifyQuiet(); });
 }
+
+// ══════════════════════════════════════════════════════════
+//  CHATS (GateControl Messenger)
+//  Data: window.gatecontrol.chat (core MessengerService in main); the page
+//  is built by chat-view.js (window.GCChatView) with chat-state.js. The nav
+//  entry is shown only while the server offers the messenger.
+// ══════════════════════════════════════════════════════════
+function renderChatBadge(count) {
+	const badge = $('#chats-badge');
+	if (!badge) return;
+	const n = Number(count) || 0;
+	badge.hidden = n <= 0;
+	badge.textContent = n > 99 ? '99+' : String(n);
+	if (n > 0) badge.setAttribute('aria-label', t('chat.unreadBadge', { count: n }));
+}
+
+chatView = chatApi && window.GCChatView && $('#page-chats')
+	? window.GCChatView.mount({
+		root: $('#page-chats'),
+		api: chatApi,
+		notify: notifyAvailable() ? notifyApi : null,
+		t,
+		getLocale: () => window.gatecontrol.i18n.getLocale(),
+		openInbox: (id) => openInbox(id),
+		onStatus: (st) => {
+			const show = !!st && st.state === 'available';
+			$('#nav-chats').hidden = !show;
+			if (!show) renderChatBadge(0);
+			if (!show && currentPage === 'chats' && st && st.state === 'unavailable') navigateTo('status');
+		},
+		onUnread: (n) => renderChatBadge(n),
+	})
+	: null;
 
 clientPolicy.onChange((st) => { onPolicyState(st); });
 clientPolicy.get().then((st) => onPolicyState(st)).catch(() => {});
