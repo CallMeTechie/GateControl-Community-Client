@@ -121,6 +121,9 @@ describe('Community IPC channels', { skip }, () => {
 			wgConfigFile: 'wg.conf',
 			// main.js always passes the notification center (notify:* channels)
 			notificationCenter: fakeNotificationCenter(),
+			// … and the messenger (chat:* channels)
+			messenger: { on() {}, status: () => ({ state: 'unavailable' }) },
+			chatNotifier: { on() {} },
 			...extra,
 		});
 		return handlers;
@@ -134,7 +137,8 @@ describe('Community IPC channels', { skip }, () => {
 		const handlers = register();
 		for (const ch of own) assert.equal(handlers[ch], undefined, `${ch} would be registered twice`);
 		for (const ch of invoked) assert.ok(handlers[ch] || own.includes(ch), ch);
-		for (const ch of ['notify:list', 'notify:read', 'notify:action', 'notify:prefs:get', 'notify:prefs:set', 'notify:test', 'notify:status', 'notify:dnd']) {
+		for (const ch of ['notify:list', 'notify:read', 'notify:action', 'notify:prefs:get', 'notify:prefs:set', 'notify:test', 'notify:status', 'notify:dnd',
+			'chat:status', 'chat:conversations', 'chat:messages', 'chat:send', 'chat:open', 'chat:media', 'chat:media:save', 'chat:media:open']) {
 			assert.ok(invoked.includes(ch), `preload: ${ch}`);
 			assert.equal(typeof handlers[ch], 'function', ch);
 		}
