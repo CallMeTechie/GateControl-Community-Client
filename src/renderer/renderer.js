@@ -2047,6 +2047,8 @@ chatView = chatApi && window.GCChatView && $('#page-chats')
 			if (!show && currentPage === 'chats' && st && st.state === 'unavailable') navigateTo('status');
 		},
 		onUnread: (n) => renderChatBadge(n),
+		// "Newer version of GateControl" banner (unknown chat features): the update check in Settings › Über.
+		checkUpdate: () => { navigateTo('settings'); $('.set-tab[data-tab="about"]')?.click(); $('#btn-check-update')?.click(); },
 	})
 	: null;
 
