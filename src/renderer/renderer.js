@@ -2049,6 +2049,11 @@ chatView = chatApi && window.GCChatView && $('#page-chats')
 		onUnread: (n) => renderChatBadge(n),
 		// "Newer version of GateControl" banner (unknown chat features): the update check in Settings › Über.
 		checkUpdate: () => { navigateTo('settings'); $('.set-tab[data-tab="about"]')?.click(); $('#btn-check-update')?.click(); },
+		// Messenger 1.4.0: a card's link (doorbell "Live-Bild" → plg-gatecontrol-door) opens that
+		// plugin's page in the portal (one-time login link, like the portal button).
+		// → false without a portal (VPN not connected): the chat page says so.
+		openRoute: (route) => (currentPortalUrl ? portal.open({ next: `/portal#${route}` }).catch(() => false) : Promise.resolve(false)),
+		openPortal: () => (currentPortalUrl ? portal.open().catch(() => false) : Promise.resolve(false)),
 	})
 	: null;
 
