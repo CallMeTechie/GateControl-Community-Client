@@ -6,6 +6,9 @@
  */
 
 const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, dialog, Notification, screen, nativeTheme } = require('electron');
+// Chats "Standort senden": navigator.geolocation from the Windows location
+// service (Electron has no key for Google's network location).
+if (process.platform === 'win32') app.commandLine.appendSwitch('enable-features', 'WinrtGeolocationImplementation');
 
 // E2E test hooks (unpackaged dev runs only, see e2e-guard.js). Must run
 // before any core service is required; a packaged build never loads them.
