@@ -54,6 +54,8 @@ const {
   MessengerService,
   ChatNotifier,
 } = require('@gatecontrol/client-core');
+// Schule (plugin gatecontrol-schule): WebUntis timetable (core services/school.js).
+const { SchoolService } = require('@gatecontrol/client-core');
 const { shortDeviceId, withDeviceId } = require('./device-id');
 const { setupNotifications } = require('./notifications');
 const { setupMessenger } = require('./messenger');
@@ -93,6 +95,7 @@ let updater = null;
 let supportBundle = null; // "Support-Paket senden" (core src/support/sender.js)
 let notifications = null; // notification center (./notifications.js), one per app lifetime
 let chats = null; // messenger (./messenger.js), one per app lifetime
+let school = null; // Schule (core SchoolService), one per app lifetime
 let configPollTimer = null; // config/check poll (see scheduleConfigPoll)
 let configCheck = null; // running config check (shared by poll and push)
 let trayState = 'disconnected'; // last state drawn in the tray (refresh on unread / DND changes)
@@ -820,6 +823,14 @@ async function initServices() {
 		getMainWindow: () => mainWindow,
 		onChange: () => updateTray(trayState),
 	});
+
+	// Schule: shown while the server lists the plugin; its toasts open the page.
+	school = SchoolService ? new SchoolService({
+		apiClient, log,
+		notificationCenter: notifications?.notificationCenter,
+		pushClient: notifications?.pushClient,
+	}) : null;
+
 	// Last known policy first (works offline)
 	await applyClientPolicy({ startup: true });
 
@@ -935,6 +946,8 @@ app.whenReady().then(async () => {
 		// chat:* channels + events, reset on server:setup (core, opt-in)
 		messenger: chats?.messenger,
 		chatNotifier: chats?.chatNotifier,
+		// school:* channels + events, reset on server:setup (core, opt-in)
+		school,
 		// Result of a bundle the admin requested (the button shows its own status).
 		onSupportResult: (res) => {
 			if (!res || res.cancelled) return;
@@ -984,6 +997,8 @@ app.whenReady().then(async () => {
 	if (notifications.handleArgv(process.argv)) log.info('Started from a notification');
 	// Chats: availability check, live events, chat toasts.
 	chats.start();
+	// Schule: availability check, push → page.
+	school?.start();
 
 	// Ask the server for the current client policy (also polled, and on
 	// every heartbeat/permissions answer with a new policyVersion).
@@ -1070,6 +1085,7 @@ async function quitApp() {
 	notifications?.stop();
 	// Chats: save the cache, leave the open chat.
 	chats?.stop();
+	school?.stop();
 
 	if (tunnelState.connected) {
 		await disconnectTunnel();
@@ -1102,4 +1118,5 @@ app.on('before-quit', async () => {
 	// Quit without quitApp() (e.g. Windows shutdown): close the push stream too.
 	notifications?.stop();
 	chats?.stop();
+	school?.stop();
 });

@@ -124,6 +124,8 @@ describe('Community IPC channels', { skip }, () => {
 			// … and the messenger (chat:* channels)
 			messenger: { on() {}, status: () => ({ state: 'unavailable' }) },
 			chatNotifier: { on() {} },
+			// … and Schule (school:* channels; a core before Schule ignores it)
+			school: { on() {}, status: () => ({ state: 'unavailable' }) },
 			...extra,
 		});
 		return handlers;
