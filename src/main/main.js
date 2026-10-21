@@ -5,7 +5,7 @@
  * All business logic lives in the core package.
  */
 
-const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, dialog, Notification, screen, nativeTheme } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, dialog, Notification, screen, nativeTheme, shell, clipboard } = require('electron');
 // Chats "Standort senden": navigator.geolocation from the Windows location
 // service (Electron has no key for Google's network location).
 if (process.platform === 'win32') app.commandLine.appendSwitch('enable-features', 'WinrtGeolocationImplementation');
@@ -56,6 +56,10 @@ const {
 } = require('@gatecontrol/client-core');
 // Schule (plugin gatecontrol-schule): WebUntis timetable (core services/school.js).
 const { SchoolService } = require('@gatecontrol/client-core');
+// GateDrop (plugin gatecontrol-gatedrop): send / receive files, LAN listener,
+// "Senden an" in the Explorer (core services/gatedrop.js).
+const { GateDropService, gatedropShell } = require('@gatecontrol/client-core');
+const { setupGateDrop } = require('./gatedrop');
 const { shortDeviceId, withDeviceId } = require('./device-id');
 const { setupNotifications } = require('./notifications');
 const { setupMessenger } = require('./messenger');
@@ -96,6 +100,7 @@ let supportBundle = null; // "Support-Paket senden" (core src/support/sender.js)
 let notifications = null; // notification center (./notifications.js), one per app lifetime
 let chats = null; // messenger (./messenger.js), one per app lifetime
 let school = null; // Schule (core SchoolService), one per app lifetime
+let gatedrop = null; // GateDrop (./gatedrop.js), one per app lifetime
 let configPollTimer = null; // config/check poll (see scheduleConfigPoll)
 let configCheck = null; // running config check (shared by poll and push)
 let trayState = 'disconnected'; // last state drawn in the tray (refresh on unread / DND changes)
@@ -186,6 +191,7 @@ function updateTray(state) {
 	const notifyItems = [
 		...(chats ? chats.menuItems(t, () => { showWindow(); mainWindow?.webContents.send('navigate', 'chats'); }) : []),
 		...(notifications ? notifications.menuItems(t) : []),
+		...(gatedrop ? gatedrop.menuItems(t) : []),
 	];
 
 	// Ready update: a mandatory one goes to the top, an optional one stays below
@@ -831,6 +837,21 @@ async function initServices() {
 		pushClient: notifications?.pushClient,
 	}) : null;
 
+	// GateDrop: shown while the server lists the plugin; receives into
+	// Downloads\GateControl, listens on TCP 47731 in private networks.
+	gatedrop = GateDropService && setupGateDrop ? setupGateDrop({
+		app, store, log, apiClient, notifications,
+		GateDropService, gatedropShell,
+		shell, clipboard, dialog, t,
+		protocol: 'gatecontrol-community',
+		toastImagePath: path.join(RESOURCES_PATH, 'icons', 'app-icon.png'),
+		showWindow: () => showWindow(),
+		getMainWindow: () => mainWindow,
+		// E2E runs must not touch the SendTo folder of the test machine.
+		manageShortcut: !e2e,
+		onChange: () => updateTray(trayState),
+	}) : null;
+
 	// Last known policy first (works offline)
 	await applyClientPolicy({ startup: true });
 
@@ -948,6 +969,9 @@ app.whenReady().then(async () => {
 		chatNotifier: chats?.chatNotifier,
 		// school:* channels + events, reset on server:setup (core, opt-in)
 		school,
+		// gatedrop:* channels + events, reset on server:setup (core, opt-in)
+		gatedrop: gatedrop?.service,
+		gatedropExplorer: gatedrop?.explorer,
 		// Result of a bundle the admin requested (the button shows its own status).
 		onSupportResult: (res) => {
 			if (!res || res.cancelled) return;
@@ -999,6 +1023,10 @@ app.whenReady().then(async () => {
 	chats.start();
 	// Schule: availability check, push → page.
 	school?.start();
+	// GateDrop: availability, presence, LAN listener; started by
+	// "Senden an → GateDrop" → the send dialog opens once the window is ready.
+	gatedrop?.start();
+	if (gatedrop?.handleArgv(process.argv)) log.info('Started from "Senden an → GateDrop"');
 
 	// Ask the server for the current client policy (also polled, and on
 	// every heartbeat/permissions answer with a new policyVersion).
@@ -1068,6 +1096,8 @@ app.whenReady().then(async () => {
 // A second start (shortcut, autostart, or a toast button: <protocol>://notify/…)
 // only brings this instance to the front or performs the toast action.
 app.on('second-instance', (_event, argv) => {
+	// "Senden an → GateDrop" (Explorer): open the send dialog with the files.
+	if (gatedrop?.handleArgv(argv)) return;
 	if (notifications?.handleArgv(argv)) return;
 	showWindow();
 });
@@ -1086,6 +1116,8 @@ async function quitApp() {
 	// Chats: save the cache, leave the open chat.
 	chats?.stop();
 	school?.stop();
+	// GateDrop: LAN listener and timers.
+	gatedrop?.stop();
 
 	if (tunnelState.connected) {
 		await disconnectTunnel();
@@ -1119,4 +1151,5 @@ app.on('before-quit', async () => {
 	notifications?.stop();
 	chats?.stop();
 	school?.stop();
+	gatedrop?.stop();
 });

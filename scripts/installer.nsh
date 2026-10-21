@@ -9,6 +9,10 @@
 !define GC_RDP_RULE "GateControl_Community_RDP_Allow_In_3389"
 !define GC_OTHER_EDITION_GUID "c2dd862a-ec97-546e-8067-c1923aed53b2"
 !define GC_OTHER_EDITION_PRODUCT "GateControl Pro Client"
+; Eingehende Regel fuer GateDrop (Direktuebertragung im WLAN, TCP 47731,
+; nur privates Profil) - pro Edition eigener Name.
+!define GC_GATEDROP_RULE "GateControl Community GateDrop"
+!define GC_GATEDROP_PORT "47731"
 
 ; ======================================================================
 ; Kill-Switch-Aufraeumen beim Deinstallieren
@@ -318,6 +322,53 @@
 !macroend
 ; ====================== Ende RDP-Freigabe-Aufraeumen ====================
 
+; ======================================================================
+; GateDrop (Plugin gatecontrol-gatedrop): Direktuebertragung im WLAN
+; (Block in Pro- und Community-Client identisch; Name in GC_GATEDROP_RULE).
+;
+; Die App hoert auf TCP ${GC_GATEDROP_PORT}, gebunden nur an private
+; LAN-Adressen (core services/gatedrop-listener.js). Die Freigabe gilt nur
+; fuer das Firewall-Profil "Privat" und nur fuer die App-Exe; in oeffentlichen
+; Netzen bleibt der Port zu (dann laeuft GateDrop ueber den Server).
+; ======================================================================
+!macro GC_GATEDROP_FIREWALL_ADD
+  nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="${GC_GATEDROP_RULE}"'
+  nsExec::ExecToLog 'netsh advfirewall firewall add rule name="${GC_GATEDROP_RULE}" dir=in action=allow protocol=TCP localport=${GC_GATEDROP_PORT} profile=private program="$INSTDIR\${APP_EXECUTABLE_FILENAME}" enable=yes'
+!macroend
+
+!macro GC_GATEDROP_FIREWALL_REMOVE
+  nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="${GC_GATEDROP_RULE}"'
+!macroend
+
+; "Senden an -> GateDrop": die App legt GateDrop.lnk im SendTo-Ordner des
+; Benutzers an. Beim Deinstallieren entfernen, ausser die andere Edition ist
+; noch vorhanden (sie teilt sich den Namen und legt ihn sonst beim naechsten
+; Start ohnehin neu an). Register $3-$6 werden gesichert.
+!macro GC_GATEDROP_SENDTO_REMOVE
+  Push $3
+  Push $4
+  Push $5
+  Push $6
+  !insertmacro GC_DETECT_OTHER_EDITION
+  ${If} $6 == 0
+    SetShellVarContext current
+    Delete "$APPDATA\Microsoft\Windows\SendTo\GateDrop.lnk"
+    SetShellVarContext all
+  ${EndIf}
+  Pop $6
+  Pop $5
+  Pop $4
+  Pop $3
+!macroend
+; ====================== Ende GateDrop ===================================
+
+!macro customInstall
+  ; GateDrop: eingehend TCP 47731, nur privates Netzwerkprofil
+  ; (Programmpfad ueber ${APP_EXECUTABLE_FILENAME}, den electron-builder aus
+  ; productName ableitet: "GateControl Community Client.exe")
+  !insertmacro GC_GATEDROP_FIREWALL_ADD
+!macroend
+
 !macro customUnInstall
   ; Bei einem Update (--updated) laeuft der alte Deinstaller vor der neuen
   ; Installation. Dann bleibt der Kill-Switch-Zustand erhalten; die neue
@@ -334,5 +385,11 @@
     ; registriert es selbst (setAsDefaultProtocolClient, HKCU); bei einem
     ; Update bleibt es erhalten, der Pfad zur Exe aendert sich nicht.
     DeleteRegKey HKCU "Software\Classes\gatecontrol-community"
+
+    ; "Senden an -> GateDrop" (Verknuepfung, die die App anlegt)
+    !insertmacro GC_GATEDROP_SENDTO_REMOVE
   ${EndIf}
+
+  ; GateDrop-Freigabe (customInstall legt sie bei einem Update neu an)
+  !insertmacro GC_GATEDROP_FIREWALL_REMOVE
 !macroend

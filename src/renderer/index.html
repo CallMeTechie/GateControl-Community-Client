@@ -9,6 +9,7 @@
 	<link rel="stylesheet" href="styles/app.css">
 	<link rel="stylesheet" href="styles/chat.css">
 	<link rel="stylesheet" href="styles/school.css">
+	<link rel="stylesheet" href="styles/gatedrop.css">
 </head>
 <body>
 <div class="gc" id="app-root">
@@ -68,6 +69,10 @@
 				<button class="nav nav-btn" type="button" data-page="schule" id="nav-schule" data-i18n-title="school.title" title="Schule" hidden>
 					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 9l10-5 10 5-10 5z"/><path d="M6 11v5c3 2 9 2 12 0v-5M22 9v6"/></svg>
 					<span class="nav-label" data-i18n="school.title">Schule</span>
+				</button>
+				<button class="nav nav-btn" type="button" data-page="gatedrop" id="nav-gatedrop" data-i18n-title="gatedrop.title" title="GateDrop" hidden>
+					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 8 5-5 5 5"/><path d="M5 21h14"/></svg>
+					<span class="nav-label" data-i18n="gatedrop.title">GateDrop</span>
 				</button>
 				<button class="nav nav-btn" type="button" data-page="inbox" id="nav-inbox" data-i18n-title="ui.inbox.title" title="Mitteilungen">
 					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
@@ -296,6 +301,9 @@
 
 			<!-- ═════════ SCHULE (plugin gatecontrol-schule, school-view.js) ═════════ -->
 			<section class="page page-fill" id="page-schule" aria-label="Schule" data-i18n-aria="school.title"></section>
+
+			<!-- ═════════ GATEDROP (plugin gatecontrol-gatedrop, gatedrop-view.js) ═════════ -->
+			<section class="page page-fill" id="page-gatedrop" aria-label="GateDrop" data-i18n-aria="gatedrop.title"></section>
 
 			<!-- ═════════ LOGS ═════════ -->
 			<section class="page page-fill" id="page-logs">
@@ -667,6 +675,8 @@
 <script src="chat-view.js"></script>
 <script src="school-state.js"></script>
 <script src="school-view.js"></script>
+<script src="gatedrop-state.js"></script>
+<script src="gatedrop-view.js"></script>
 <script src="renderer.js"></script>
 </body>
 </html>
