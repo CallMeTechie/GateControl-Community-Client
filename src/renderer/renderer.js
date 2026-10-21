@@ -181,6 +181,7 @@ $$('.nav-btn').forEach(btn => {
 let currentPage = 'status';
 let chatView = null; // chat-view.js instance (CHATS section below)
 let schoolView = null; // school-view.js instance (SCHULE section below)
+let notifyRoutesView = null; // notify-routes.js in Settings › Benachrichtigungen
 
 function navigateTo(page) {
 	if (!$(`#page-${page}`)) page = 'status';
@@ -261,6 +262,7 @@ function updateDOM() {
 	renderNotifySettings();
 	chatView?.relabel();
 	schoolView?.relabel();
+	notifyRoutesView?.render();
 }
 
 // Locale Init
@@ -2044,7 +2046,54 @@ if (notifyAvailable()) {
 		else portal.open({ next: '/portal#benachrichtigungen' });
 	});
 
-	$('.set-tab[data-tab="notify"]')?.addEventListener('click', () => { loadNotifyStatus(); refreshNotifyQuiet(); });
+	$('.set-tab[data-tab="notify"]')?.addEventListener('click', () => { loadNotifyStatus(); refreshNotifyQuiet(); notifyRoutesView?.load(); });
+
+	// "Wo Mitteilungen erscheinen" (core 1.191 push routes): GateControl, the
+	// family chat or an own chat per kind — the same view as in the chat
+	// settings (notify-routes.js). Hidden on servers / cores without it (and
+	// until the server answered once, e.g. before the setup).
+	if (window.GCNotifyRoutes && $('#notify-routes')) {
+		let routesSeen = false;
+		notifyRoutesView = window.GCNotifyRoutes.mount($('#notify-routes'), {
+			api: notifyApi,
+			t,
+			skin: 'settings',
+			toast: (msg) => {
+				const status = $('#notify-save-status');
+				status.hidden = false;
+				status.textContent = msg;
+				setTimeout(() => { status.hidden = true; }, 6000);
+			},
+			onState: (st) => {
+				if (st === 'ready' || st === 'empty') routesSeen = true;
+				$('#notify-routes-card').hidden = st === 'unsupported' || (st === 'error' && !routesSeen);
+			},
+		});
+		notifyRoutesView.load();
+	}
+}
+
+/**
+ * A card link in a chat (Messenger 1.4 doorbell "Live-Bild", 1.6 notice
+ * cards "Ganze Nachricht lesen"): a notice card's notification opens what a
+ * click on it would (core notify.open → notify:navigate, e.g. Schule on the
+ * message); otherwise this app's page for the route, else the plugin's
+ * portal tab (one-time login link). → false: the portal is not reachable now.
+ */
+async function openCardRoute(route, target) {
+	const notice = !!target && (!!target.topic || !!target.data);
+	if (notice && notifyAvailable() && typeof notifyApi.open === 'function') {
+		const r = await notifyApi.open(target).catch(() => null);
+		if (r && r.ok) return true;
+	}
+	const own = NS.routeTarget(route, shownPages());
+	if (own) {
+		if (own.page === 'schule') openSchool(own.context);
+		else navigateTo(own.page);
+		return true;
+	}
+	const base = String(route || '').split('/')[0];
+	return currentPortalUrl ? portal.open({ next: `/portal#${base}` }).catch(() => false) : false;
 }
 
 // ══════════════════════════════════════════════════════════
@@ -2079,10 +2128,11 @@ chatView = chatApi && window.GCChatView && $('#page-chats')
 		onUnread: (n) => renderChatBadge(n),
 		// "Newer version of GateControl" banner (unknown chat features): the update check in Settings › Über.
 		checkUpdate: () => { navigateTo('settings'); $('.set-tab[data-tab="about"]')?.click(); $('#btn-check-update')?.click(); },
-		// Messenger 1.4.0: a card's link (doorbell "Live-Bild" → plg-gatecontrol-door) opens that
-		// plugin's page in the portal (one-time login link, like the portal button).
-		// → false without a portal (VPN not connected): the chat page says so.
-		openRoute: (route) => (currentPortalUrl ? portal.open({ next: `/portal#${route}` }).catch(() => false) : Promise.resolve(false)),
+		// A card's link: Messenger 1.6 notice cards open what a click on their notification
+		// would; else the app's page or the plugin's page in the portal (doorbell "Live-Bild"
+		// → plg-gatecontrol-door, one-time login link). → false without a portal (VPN not
+		// connected): the chat page says so.
+		openRoute: (route, target) => openCardRoute(route, target),
 		openPortal: () => (currentPortalUrl ? portal.open().catch(() => false) : Promise.resolve(false)),
 	})
 	: null;
