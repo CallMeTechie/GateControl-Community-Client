@@ -3,7 +3,7 @@
  * UI-Logik und State Management
  */
 
-const { tunnel, server, config, killSwitch, rdpAllow, autostart, logs, update, services, traffic, dns, shell, peer, permissions, onPortalUrl, portal, getVersion, getDeviceId, window: win, locale, policy: clientPolicy, notify: notifyApi, chat: chatApi, school: schoolApi } = window.gatecontrol;
+const { tunnel, server, config, killSwitch, rdpAllow, autostart, logs, update, services, traffic, dns, shell, peer, permissions, onPortalUrl, portal, getVersion, getDeviceId, window: win, locale, policy: clientPolicy, notify: notifyApi, chat: chatApi, school: schoolApi, gatedrop: gatedropApi } = window.gatecontrol;
 const { t } = window.gatecontrol.i18n;
 
 // Aktive Berechtigungen (werden beim Connect geladen)
@@ -181,6 +181,7 @@ $$('.nav-btn').forEach(btn => {
 let currentPage = 'status';
 let chatView = null; // chat-view.js instance (CHATS section below)
 let schoolView = null; // school-view.js instance (SCHULE section below)
+let gatedropView = null; // gatedrop-view.js instance (GATEDROP section below)
 let notifyRoutesView = null; // notify-routes.js in Settings › Benachrichtigungen
 
 function navigateTo(page) {
@@ -207,6 +208,9 @@ function navigateTo(page) {
 	// Schule: loads when shown (the timetable of this / next week)
 	if (page === 'schule' && prev !== 'schule') schoolView?.show();
 	else if (prev === 'schule' && page !== 'schule') schoolView?.hide();
+	// GateDrop: the lists load when shown
+	if (page === 'gatedrop' && prev !== 'gatedrop') gatedropView?.show();
+	else if (prev === 'gatedrop' && page !== 'gatedrop') gatedropView?.hide();
 }
 
 // Navigation aus dem Main Process
@@ -262,6 +266,7 @@ function updateDOM() {
 	renderNotifySettings();
 	chatView?.relabel();
 	schoolView?.relabel();
+	gatedropView?.relabel();
 	notifyRoutesView?.render();
 }
 
@@ -1826,12 +1831,20 @@ function selectInboxEntry(id) {
 	}
 }
 
-/** Pages that exist right now (Chats / Schule only while the server offers them). */
+/** Pages that exist right now (Chats / Schule / GateDrop only while the server offers them). */
 function shownPages() {
 	const pages = ['status', 'services', 'inbox', 'logs', 'settings'];
 	if (chatView && !$('#nav-chats').hidden) pages.push('chats');
 	if (schoolView && !$('#nav-schule').hidden) pages.push('schule');
+	if (gatedropView && !$('#nav-gatedrop').hidden) pages.push('gatedrop');
 	return pages;
+}
+
+/** GateDrop on a push target (Empfangen / Links, a send), e.g. from a toast click. */
+function openGateDrop(context) {
+	if (!gatedropView) return;
+	gatedropView.open(context || null);
+	navigateTo('gatedrop');
 }
 
 /** Schule on a push target (child, day or message), e.g. from a toast click. */
@@ -1890,6 +1903,8 @@ if (notifyAvailable()) {
 			loadInbox();
 		} else if (target.page === 'schule') {
 			openSchool(target.context);
+		} else if (target.page === 'gatedrop') {
+			openGateDrop(target.context);
 		} else {
 			navigateTo(target.page);
 		}
@@ -2091,6 +2106,7 @@ async function openCardRoute(route, target) {
 	const own = NS.routeTarget(route, shownPages());
 	if (own) {
 		if (own.page === 'schule') openSchool(own.context);
+		else if (own.page === 'gatedrop') openGateDrop(own.context);
 		else navigateTo(own.page);
 		return true;
 	}
@@ -2158,6 +2174,40 @@ schoolView = schoolApi && window.GCSchoolView && $('#page-schule')
 		},
 	})
 	: null;
+
+// ══════════════════════════════════════════════════════════
+//  GATEDROP (plugin gatecontrol-gatedrop: send / receive files, text, links)
+//  Data: window.gatecontrol.gatedrop (core GateDropService in main); the page
+//  and the send dialog are built by gatedrop-view.js (window.GCGateDropView)
+//  with gatedrop-state.js. The nav entry is shown only while the server lists
+//  the plugin; files dropped on the window open the send dialog.
+// ══════════════════════════════════════════════════════════
+gatedropView = gatedropApi && window.GCGateDropView && $('#page-gatedrop')
+	? window.GCGateDropView.mount({
+		root: $('#page-gatedrop'),
+		api: gatedropApi,
+		t,
+		getLocale: () => window.gatecontrol.i18n.getLocale(),
+		// The dialog and notices need the design tokens of #app-root (.gc).
+		dialogHost: $('#app-root'),
+		onOpen: () => navigateTo('gatedrop'),
+		onStatus: (st) => {
+			const show = !!st && st.state === 'available';
+			$('#nav-gatedrop').hidden = !show;
+			if (!show && currentPage === 'gatedrop' && st && st.state === 'unavailable') navigateTo('status');
+		},
+	})
+	: null;
+if (gatedropView) {
+	window.GCGateDropView.attachWindowDrop({
+		view: gatedropView,
+		api: gatedropApi,
+		t,
+		host: $('#app-root'),
+		// The chat composer takes files itself.
+		skip: (target) => !!(target.closest && target.closest('#page-chats')),
+	});
+}
 
 clientPolicy.onChange((st) => { onPolicyState(st); });
 clientPolicy.get().then((st) => onPolicyState(st)).catch(() => {});
