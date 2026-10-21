@@ -2068,6 +2068,8 @@ if (notifyAvailable()) {
 				if (st === 'ready' || st === 'empty') routesSeen = true;
 				$('#notify-routes-card').hidden = st === 'unsupported' || (st === 'error' && !routesSeen);
 			},
+			// the own chat a choice created / names (GateControl 1.192): into the chat list
+			onChat: () => { chatView?.refreshList({ server: true }); },
 		});
 		notifyRoutesView.load();
 	}
