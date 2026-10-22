@@ -10,7 +10,7 @@
 !define GC_OTHER_EDITION_GUID "c2dd862a-ec97-546e-8067-c1923aed53b2"
 !define GC_OTHER_EDITION_PRODUCT "GateControl Pro Client"
 ; Eingehende Regel fuer GateDrop (Direktuebertragung im WLAN, TCP 47731,
-; nur privates Profil) - pro Edition eigener Name.
+; nur aus dem lokalen Subnetz) - pro Edition eigener Name.
 !define GC_GATEDROP_RULE "GateControl Community GateDrop"
 !define GC_GATEDROP_PORT "47731"
 
@@ -328,12 +328,14 @@
 ;
 ; Die App hoert auf TCP ${GC_GATEDROP_PORT}, gebunden nur an private
 ; LAN-Adressen (core services/gatedrop-listener.js). Die Freigabe gilt nur
-; fuer das Firewall-Profil "Privat" und nur fuer die App-Exe; in oeffentlichen
-; Netzen bleibt der Port zu (dann laeuft GateDrop ueber den Server).
+; fuer die App-Exe und nur fuer Gegenstellen im lokalen Subnetz, in allen
+; Firewall-Profilen: Windows stuft das Heim-WLAN oft als "Oeffentlich" ein,
+; dann kam das Handy nicht an den PC (GateDrop fiel auf den Server zurueck).
+; Von ausserhalb des Subnetzes bleibt der Port zu.
 ; ======================================================================
 !macro GC_GATEDROP_FIREWALL_ADD
   nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="${GC_GATEDROP_RULE}"'
-  nsExec::ExecToLog 'netsh advfirewall firewall add rule name="${GC_GATEDROP_RULE}" dir=in action=allow protocol=TCP localport=${GC_GATEDROP_PORT} profile=private program="$INSTDIR\${APP_EXECUTABLE_FILENAME}" enable=yes'
+  nsExec::ExecToLog 'netsh advfirewall firewall add rule name="${GC_GATEDROP_RULE}" dir=in action=allow protocol=TCP localport=${GC_GATEDROP_PORT} remoteip=localsubnet profile=any program="$INSTDIR\${APP_EXECUTABLE_FILENAME}" enable=yes'
 !macroend
 
 !macro GC_GATEDROP_FIREWALL_REMOVE
@@ -363,7 +365,7 @@
 ; ====================== Ende GateDrop ===================================
 
 !macro customInstall
-  ; GateDrop: eingehend TCP 47731, nur privates Netzwerkprofil
+  ; GateDrop: eingehend TCP 47731, nur aus dem lokalen Subnetz
   ; (Programmpfad ueber ${APP_EXECUTABLE_FILENAME}, den electron-builder aus
   ; productName ableitet: "GateControl Community Client.exe")
   !insertmacro GC_GATEDROP_FIREWALL_ADD
