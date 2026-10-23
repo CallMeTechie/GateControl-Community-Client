@@ -378,6 +378,7 @@ async function connectTunnel() {
 					log.warn('Config-Warnungen: ' + validation.warnings.join(', '));
 				}
 				await wgService.writeConfig(WG_CONFIG_FILE, fetchedConfig);
+				rememberInternalDns();
 				log.info('Konfiguration vom Server aktualisiert');
 			}
 		}
@@ -431,13 +432,13 @@ async function connectTunnel() {
 			log.debug('Hostname report skipped:', err.message);
 		}
 
-		// Install NRPT rule for *.gc.internal so Windows routes those
-		// queries to the VPN-internal dnsmasq instead of the default
+		// Install NRPT rule for *.<domain> (peer hostnames) so Windows routes
+		// those queries to the VPN-internal dnsmasq instead of the default
 		// resolver fan-out (which caches a public-side NXDOMAIN first).
 		try {
 			if (DnsPolicy && !dnsPolicy) dnsPolicy = new DnsPolicy(log);
 			if (dnsPolicy) {
-				dnsPolicy.add('.gc.internal', '10.8.0.1').catch((e) =>
+				installPeerDnsRule().catch((e) =>
 					log.debug('NRPT install failed:', e && e.message));
 			}
 		} catch (err) {
@@ -452,6 +453,24 @@ async function connectTunnel() {
 		broadcastState('error', err.message);
 		showNotification(t('notify.connectionError'), err.message, { collapseKey: 'tunnel' });
 	}
+}
+
+// Internal DNS as the server reported it with the config: { domain, server },
+// null (off), or unset for servers that do not say — kept for connects
+// where the config cannot be fetched.
+function rememberInternalDns() {
+	if (apiClient && apiClient.internalDns !== undefined) store.set('tunnel.internalDns', apiClient.internalDns);
+	else store.delete('tunnel.internalDns');
+}
+
+// Peer hostnames (<host>.<domain>) → the server's dnsmasq, with the domain and
+// resolver of this server (client-core DnsPolicy.ruleFor), not fixed values.
+async function installPeerDnsRule() {
+	const rule = DnsPolicy.ruleFor({
+		internalDns: store.get('tunnel.internalDns'),
+		wgConfig: await wgService.readConfig(WG_CONFIG_FILE),
+	});
+	if (rule) await dnsPolicy.add(rule.namespace, rule.nameServer);
 }
 
 async function disconnectTunnel() {
