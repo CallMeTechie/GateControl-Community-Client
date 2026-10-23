@@ -5,7 +5,7 @@
  * All business logic lives in the core package.
  */
 
-const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, dialog, Notification, screen, nativeTheme, shell, clipboard } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, dialog, Notification, screen, nativeTheme, shell, clipboard, safeStorage, powerMonitor, globalShortcut } = require('electron');
 // Chats "Standort senden": navigator.geolocation from the Windows location
 // service (Electron has no key for Google's network location).
 if (process.platform === 'win32') app.commandLine.appendSwitch('enable-features', 'WinrtGeolocationImplementation');
@@ -56,6 +56,10 @@ const {
 } = require('@gatecontrol/client-core');
 // Schule (plugin gatecontrol-schule): WebUntis timetable (core services/school.js).
 const { SchoolService } = require('@gatecontrol/client-core');
+// Vault (plugin gatecontrol-vault): end-to-end encrypted password manager
+// (core docs/vault.md); quick search window on Strg+Alt+P.
+const { VaultService } = require('@gatecontrol/client-core');
+const { setupVaultQuick } = require('./vault-quick');
 // GateDrop (plugin gatecontrol-gatedrop): send / receive files, LAN listener,
 // "Senden an" in the Explorer (core services/gatedrop.js).
 const { GateDropService, gatedropShell } = require('@gatecontrol/client-core');
@@ -100,6 +104,8 @@ let supportBundle = null; // "Support-Paket senden" (core src/support/sender.js)
 let notifications = null; // notification center (./notifications.js), one per app lifetime
 let chats = null; // messenger (./messenger.js), one per app lifetime
 let school = null; // Schule (core SchoolService), one per app lifetime
+let vault = null; // Vault (core VaultService), one per app lifetime
+let vaultQuick = null; // Vault quick search window (./vault-quick.js)
 let gatedrop = null; // GateDrop (./gatedrop.js), one per app lifetime
 let configPollTimer = null; // config/check poll (see scheduleConfigPoll)
 let configCheck = null; // running config check (shared by poll and push)
@@ -328,6 +334,17 @@ function createWindow() {
 	mainWindow.on('closed', () => {
 		mainWindow = null;
 	});
+
+	// Vault auto-lock "immediately" (0): the window goes to the tray / taskbar.
+	mainWindow.on('hide', () => vault?.windowHidden());
+	mainWindow.on('minimize', () => vault?.windowHidden());
+}
+
+/** The app's theme resolved to dark / light (Vault quick search window). */
+function resolvedAppTheme() {
+	const stored = store.get('app.theme', 'dark');
+	if (stored === 'system') return nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
+	return stored === 'light' ? 'light' : 'dark';
 }
 
 function showWindow() {
@@ -856,6 +873,29 @@ async function initServices() {
 		pushClient: notifications?.pushClient,
 	}) : null;
 
+	// Vault: shown while the server lists the plugin. Keys and decrypted entries
+	// stay in this process while unlocked; the offline copy is ciphertext only;
+	// "Angemeldet bleiben" keeps the user key under DPAPI (safeStorage).
+	vault = VaultService ? new VaultService({
+		apiClient,
+		dir: path.join(app.getPath('userData'), 'vault'),
+		protect: VaultService.safeStorageProtect(safeStorage),
+		clipboard,
+		notificationCenter: notifications?.notificationCenter,
+		pushClient: notifications?.pushClient,
+		powerMonitor,
+		log,
+	}) : null;
+	vaultQuick = vault && setupVaultQuick ? setupVaultQuick({
+		BrowserWindow, globalShortcut, screen, ipcMain, vault, log,
+		preload: path.join(__dirname, 'vault-quick-preload.js'),
+		html: path.join(__dirname, '..', 'renderer', 'vault-quick.html'),
+		getTheme: () => resolvedAppTheme(),
+		getLocale: () => getLocale(),
+	}) : null;
+	// E2E runs open the quick search without the global shortcut.
+	if (e2e) e2e.vaultQuick = vaultQuick;
+
 	// GateDrop: shown while the server lists the plugin; receives into
 	// Downloads\GateControl, listens on TCP 47731 in private networks.
 	gatedrop = GateDropService && setupGateDrop ? setupGateDrop({
@@ -988,6 +1028,8 @@ app.whenReady().then(async () => {
 		chatNotifier: chats?.chatNotifier,
 		// school:* channels + events, reset on server:setup (core, opt-in)
 		school,
+		// vault:* channels + events, reset on server:setup (core, opt-in)
+		vault,
 		// gatedrop:* channels + events, reset on server:setup (core, opt-in)
 		gatedrop: gatedrop?.service,
 		gatedropExplorer: gatedrop?.explorer,
@@ -1042,6 +1084,9 @@ app.whenReady().then(async () => {
 	chats.start();
 	// Schule: availability check, push → page.
 	school?.start();
+	// Vault: availability, sync, auto-lock; Strg+Alt+P while the server offers it.
+	vault?.start();
+	vaultQuick?.start();
 	// GateDrop: availability, presence, LAN listener; started by
 	// "Senden an → GateDrop" → the send dialog opens once the window is ready.
 	gatedrop?.start();
@@ -1135,6 +1180,10 @@ async function quitApp() {
 	// Chats: save the cache, leave the open chat.
 	chats?.stop();
 	school?.stop();
+	// Vault: forget the keys, stop timers, release Strg+Alt+P.
+	vaultQuick?.stop();
+	vault?.lock('quit');
+	vault?.stop();
 	// GateDrop: LAN listener and timers.
 	gatedrop?.stop();
 
@@ -1170,5 +1219,8 @@ app.on('before-quit', async () => {
 	notifications?.stop();
 	chats?.stop();
 	school?.stop();
+	vaultQuick?.stop();
+	vault?.lock('quit');
+	vault?.stop();
 	gatedrop?.stop();
 });
