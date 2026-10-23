@@ -892,6 +892,7 @@ async function initServices() {
 		html: path.join(__dirname, '..', 'renderer', 'vault-quick.html'),
 		getTheme: () => resolvedAppTheme(),
 		getLocale: () => getLocale(),
+		isMainVisible: () => !!mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && !mainWindow.isMinimized(),
 	}) : null;
 	// E2E runs open the quick search without the global shortcut.
 	if (e2e) e2e.vaultQuick = vaultQuick;
