@@ -15,6 +15,8 @@ let currentPortalUrl = null;
 // minimum version / mandatory, assigned by the server, read-only here).
 let pendingUpdate = null;
 let updateCardHidden = false;
+let updateInstalling = false;     // "installieren" clicked, waiting for the installer
+let updateInstallError = null;    // why the installer did not start (shown in the card)
 let updatePolicy = null;
 // Client policy from the server (core ClientPolicyService state):
 // { fetched, managed, policy, locks, splitModes }. Unmanaged until loaded.
@@ -1060,7 +1062,34 @@ const UPDATE_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"
 function showUpdateBanner(info) {
 	pendingUpdate = info;
 	updateCardHidden = false;
+	updateInstallError = null;
 	renderUpdateCard();
+}
+
+// Starts the installer (main: re-hash, then VPN down, then start). A failure
+// comes back with the reason and stays in the card instead of nothing happening.
+async function installUpdateNow() {
+	if (updateInstalling) return;
+	updateInstalling = true;
+	updateInstallError = null;
+	renderUpdateCard();
+	let result;
+	try {
+		result = await update.install();
+	} catch (err) {
+		result = { ok: false, code: 'launch_failed', message: err && err.message };
+	}
+	const text = window.GCUpdateState.installErrorText(result, t);
+	if (!text) return; // the installer runs, the app ends in a moment
+	updateInstalling = false;
+	updateInstallError = text;
+	renderUpdateCard();
+}
+
+/** Text under the card / notice title: install state wins over the description. */
+function updateStatusText(fallback) {
+	if (updateInstalling) return t('update.installStarting');
+	return updateInstallError || fallback;
 }
 
 function applyUpdatePolicy(policy) {
@@ -1096,7 +1125,8 @@ function renderUpdateCard() {
 		card.appendChild(head);
 
 		const text = document.createElement('p');
-		text.textContent = st.mandatory ? `${requiredText(st)} ${t('update.requiredTunnelHint')}` : t('update.readyToInstall');
+		text.textContent = updateStatusText(st.mandatory ? `${requiredText(st)} ${t('update.requiredTunnelHint')}` : t('update.readyToInstall'));
+		if (updateInstallError && !updateInstalling) text.className = 'update-error';
 		card.appendChild(text);
 
 		const actions = document.createElement('div');
@@ -1106,7 +1136,8 @@ function renderUpdateCard() {
 		installBtn.type = 'button';
 		installBtn.className = 'btn btn-sec btn-sm';
 		installBtn.textContent = t('update.install');
-		installBtn.addEventListener('click', () => update.install());
+		installBtn.disabled = updateInstalling;
+		installBtn.addEventListener('click', () => installUpdateNow());
 		actions.appendChild(installBtn);
 
 		if (st.dismissable) {
@@ -1135,8 +1166,8 @@ function renderUpdateCard() {
 		const strong = document.createElement('strong');
 		strong.textContent = t('update.required');
 		const desc = document.createElement('div');
-		desc.className = 'muted';
-		desc.textContent = `${requiredText(st)} ${t('update.requiredTunnelHint')}`;
+		desc.className = updateInstallError && !updateInstalling ? 'muted update-error' : 'muted';
+		desc.textContent = updateStatusText(`${requiredText(st)} ${t('update.requiredTunnelHint')}`);
 		body.appendChild(strong);
 		body.appendChild(desc);
 		notice.appendChild(body);
@@ -1145,7 +1176,8 @@ function renderUpdateCard() {
 		installBtn.id = 'update-required-install';
 		installBtn.className = 'btn btn-sec';
 		installBtn.textContent = t('update.install');
-		installBtn.addEventListener('click', () => update.install());
+		installBtn.disabled = updateInstalling;
+		installBtn.addEventListener('click', () => installUpdateNow());
 		notice.appendChild(installBtn);
 		$('#update-required-slot').appendChild(notice);
 	}
@@ -1632,7 +1664,7 @@ const inbox = {
 	items: [],
 	topics: [],
 	unread: 0,
-	filter: 'all',
+	filter: { read: 'all', source: '' }, // see loadInboxFilter()
 	selectedId: null,
 	error: false,
 	loaded: false,
@@ -1685,46 +1717,92 @@ async function loadNotifyStatus() {
 	if (currentPage === 'inbox') renderInbox();
 }
 
-function renderInboxFilters() {
-	const host = $('#inbox-filters');
-	if (!host) return;
-	host.textContent = '';
-	for (const opt of NS.filterOptions(inbox.items, inbox.topics, inbox.filter, t)) {
-		const on = opt.id === inbox.filter;
-		const btn = nh('button', `fchip${on ? ' on' : ''}`, opt.label);
-		btn.type = 'button';
-		btn.setAttribute('role', 'tab');
-		btn.setAttribute('aria-selected', on ? 'true' : 'false');
-		btn.dataset.filter = opt.id;
-		btn.addEventListener('click', () => {
-			inbox.filter = opt.id;
-			renderInbox();
-		});
-		host.appendChild(btn);
-	}
+// Filter of the list (read state × source), kept for this app session.
+const INBOX_FILTER_KEY = 'gc.inbox.filter';
+
+function loadInboxFilter() {
+	try { return NS.normalizeFilter(JSON.parse(window.sessionStorage.getItem(INBOX_FILTER_KEY) || 'null')); } catch { return NS.normalizeFilter(null); }
 }
 
-function createInboxRow(entry) {
+function setInboxFilter(next) {
+	inbox.filter = NS.normalizeFilter({ ...inbox.filter, ...next });
+	try { window.sessionStorage.setItem(INBOX_FILTER_KEY, JSON.stringify(inbox.filter)); } catch { /* not kept */ }
+	renderInbox();
+}
+
+const inboxLocale = () => ({ locale: window.gatecontrol.i18n.getLocale() });
+
+/** Source badge: the plugin's icon, else its initial (text only). */
+function inboxBadge(badge, cls) {
+	const box = nh('span', cls);
+	if (badge.paths) {
+		const NSVG = 'http://www.w3.org/2000/svg';
+		const svg = document.createElementNS(NSVG, 'svg');
+		for (const [k, v] of [['viewBox', '0 0 24 24'], ['width', '17'], ['height', '17'], ['fill', 'none'], ['stroke', 'currentColor'], ['stroke-width', '1.8'], ['stroke-linecap', 'round'], ['stroke-linejoin', 'round'], ['aria-hidden', 'true']]) svg.setAttribute(k, v);
+		for (const d of badge.paths) {
+			const p = document.createElementNS(NSVG, 'path');
+			p.setAttribute('d', d);
+			svg.appendChild(p);
+		}
+		box.appendChild(svg);
+	} else {
+		box.appendChild(nh('span', 'inbox-ini', badge.initial));
+	}
+	return box;
+}
+
+function renderInboxFilters() {
+	const seg = $('#inbox-read-seg');
+	if (seg) {
+		for (const btn of seg.querySelectorAll('button')) {
+			const on = btn.dataset.read === inbox.filter.read;
+			btn.classList.toggle('on', on);
+			btn.setAttribute('aria-selected', on ? 'true' : 'false');
+		}
+	}
+	const sel = $('#inbox-source');
+	if (!sel) return;
+	sel.textContent = '';
+	for (const opt of NS.sourceOptions(inbox.items, inbox.topics, inbox.filter.source, t)) {
+		const o = nh('option', null, NS.optionText(opt, t));
+		o.value = opt.value;
+		sel.appendChild(o);
+	}
+	sel.value = inbox.filter.source;
+	sel.title = sel.selectedOptions[0] ? sel.selectedOptions[0].textContent.trim() : '';
+}
+
+function createInboxRow(entry, tabbable) {
+	const v = NS.rowView(entry, inbox.topics, t);
 	const selected = entry.id === inbox.selectedId;
-	const unread = entry.state === 'delivered';
-	const row = nh('button', `inbox-row${selected ? ' sel' : ''}${unread ? ' unread' : ''}`);
+	const row = nh('button', `inbox-row${selected ? ' sel' : ''}${v.unread ? ' unread' : ''}`);
 	row.type = 'button';
-	row.setAttribute('role', 'listitem');
+	row.setAttribute('role', 'option');
+	row.setAttribute('aria-selected', selected ? 'true' : 'false');
+	row.tabIndex = tabbable ? 0 : -1;
 	row.dataset.id = String(entry.id);
-	if (selected) row.setAttribute('aria-current', 'true');
+	row.setAttribute('aria-label', [v.unread ? t('ui.inbox.unreadMark') : '', v.priority ? v.priority.label : '', v.label, v.title, v.preview, v.time].filter(Boolean).join(', '));
 	row.addEventListener('click', () => selectInboxEntry(entry.id));
 
-	row.appendChild(nh('span', 'unread-dot'));
+	const tone = entry.priority === 'critical' ? ' crit' : entry.priority === 'high' ? ' high' : '';
+	const icon = inboxBadge(v.badge, `inbox-ico${tone}`);
+	if (v.labelTitle) icon.title = v.labelTitle;
+	icon.appendChild(nh('span', 'inbox-udot'));
+	row.appendChild(icon);
+
 	const text = nh('span', 'inbox-row-text');
-	text.appendChild(nh('span', 'inbox-row-title', entry.title || '—'));
-	const meta = NS.rowMeta(entry, inbox.topics, t, { locale: window.gatecontrol.i18n.getLocale() });
-	const metaEl = nh('span', 'inbox-row-meta');
-	if (meta.priority) {
-		metaEl.appendChild(nh('span', `prio-${entry.priority}`, meta.priority.label));
-		if (meta.text) metaEl.appendChild(document.createTextNode(' · '));
+	const top = nh('span', 'inbox-row-top');
+	const src = nh('span', 'inbox-row-src');
+	if (v.priority) {
+		src.appendChild(nh('span', `prio-${entry.priority}`, v.priority.label));
+		src.appendChild(document.createTextNode(' · '));
 	}
-	metaEl.appendChild(document.createTextNode(meta.text));
-	text.appendChild(metaEl);
+	src.appendChild(document.createTextNode(v.label));
+	top.appendChild(src);
+	if (v.time) top.appendChild(nh('span', 'inbox-row-time', v.time));
+	text.appendChild(top);
+	text.appendChild(nh('span', 'inbox-row-title', v.title));
+	if (v.preview) text.appendChild(nh('span', 'inbox-row-body', v.preview));
 	row.appendChild(text);
 	return row;
 }
@@ -1738,8 +1816,20 @@ function renderInbox() {
 	if (inbox.selectedId !== null && !inbox.items.some((e) => e.id === inbox.selectedId)) inbox.selectedId = null;
 
 	const list = $('#inbox-list');
+	const hadFocus = list.contains(document.activeElement);
 	list.textContent = '';
-	shown.forEach((entry) => list.appendChild(createInboxRow(entry)));
+	const focusId = shown.some((e) => e.id === inbox.selectedId) ? inbox.selectedId : shown[0]?.id;
+	NS.groupByDay(shown, t, inboxLocale()).forEach((g, i) => {
+		const group = nh('div', 'inbox-day');
+		group.setAttribute('role', 'group');
+		const head = nh('div', 'inbox-day-label', g.label);
+		head.id = `inbox-day-${i}`;
+		group.setAttribute('aria-labelledby', head.id);
+		group.appendChild(head);
+		g.items.forEach((entry) => group.appendChild(createInboxRow(entry, entry.id === focusId)));
+		list.appendChild(group);
+	});
+	if (hadFocus) list.querySelector('.inbox-row[tabindex="0"]')?.focus();
 
 	const empty = inbox.loaded ? NS.emptyState({
 		status: inbox.status, prefs: inbox.prefs, total: inbox.items.length, shown: shown.length,
@@ -1753,7 +1843,7 @@ function renderInbox() {
 		$('#inbox-empty-hint').textContent = hint;
 		const action = $('#inbox-empty-action');
 		action.hidden = !(empty === 'off' || empty === 'error' || empty === 'filtered');
-		action.textContent = empty === 'filtered' ? t('ui.inbox.filterAll') : t(`ui.inbox.${empty}.action`);
+		action.textContent = empty === 'filtered' ? t('ui.inbox.resetFilter') : t(`ui.inbox.${empty}.action`);
 		action.dataset.kind = empty;
 	}
 
@@ -1773,19 +1863,34 @@ function renderInboxDetail() {
 	$('#inbox-detail-empty').hidden = !!entry || inbox.items.length === 0;
 	if (!entry) return;
 
-	const pill = NS.detailPill(entry, inbox.topics, t);
-	detail.appendChild(nh('span', `chip ${pill.cls}`, pill.label));
+	// Quelle › Thema (+ priority when it matters)
+	const crumb = NS.breadcrumb(entry, inbox.topics, t);
+	const head = nh('div', 'inbox-crumb');
+	head.appendChild(inboxBadge(crumb.badge, 'inbox-ico sm'));
+	const path = nh('span', 'inbox-crumb-text');
+	path.appendChild(nh('b', null, crumb.source));
+	if (crumb.topic) {
+		path.appendChild(nh('span', 'inbox-crumb-sep', '›'));
+		path.appendChild(nh('span', null, crumb.topic));
+	}
+	path.title = [crumb.source, crumb.topic].filter(Boolean).join(' › ');
+	head.appendChild(path);
+	const pill = NS.priorityPill(entry.priority, t);
+	if (pill) head.appendChild(nh('span', `chip ${pill.cls}`, pill.label));
+	detail.appendChild(head);
+
 	detail.appendChild(nh('h2', 'disp inbox-detail-title', entry.title || '—'));
+	const when = NS.receivedLine(entry, t, inboxLocale());
+	if (when) detail.appendChild(nh('p', 'inbox-when', when));
 	if (entry.body) detail.appendChild(nh('p', 'inbox-body', entry.body));
 
-	const facts = NS.entryFacts(entry, t, { locale: window.gatecontrol.i18n.getLocale() });
+	const facts = NS.entryFacts(entry);
 	if (facts.length) {
 		const grid = nh('div', 'fact-grid');
 		facts.forEach((f) => grid.appendChild(factCard(f.label, f.value)));
 		detail.appendChild(grid);
 	}
 
-	const actions = Array.isArray(entry.actions) ? entry.actions : [];
 	// Schule message: open the timetable on its child / day (or the message) here in the app.
 	const schoolCtx = window.GCSchoolState && shownPages().includes('schule') ? window.GCSchoolState.entryContext(entry) : null;
 	if (schoolCtx) {
@@ -1806,12 +1911,14 @@ function renderInboxDetail() {
 		row.appendChild(btn);
 		detail.appendChild(row);
 	}
-	if (actions.length) {
+	const acts = NS.actionButtons(entry);
+	if (acts.buttons.length) {
 		const row = nh('div', 'inbox-actions');
-		actions.forEach((a, i) => {
-			const btn = nh('button', `btn ${i === 0 ? 'btn-pri' : 'btn-sec'}`, a.label);
+		acts.buttons.forEach((a) => {
+			const btn = nh('button', `btn ${a.cls}`, a.label);
 			btn.type = 'button';
 			btn.dataset.action = a.id;
+			if (a.chosen) btn.setAttribute('aria-pressed', 'true');
 			btn.addEventListener('click', async () => {
 				btn.disabled = true;
 				const res = await notifyApi.action(entry.id, a.id).catch((err) => ({ ok: false, error: err?.message }));
@@ -1827,6 +1934,7 @@ function renderInboxDetail() {
 			row.appendChild(btn);
 		});
 		detail.appendChild(row);
+		if (acts.answered) detail.appendChild(nh('p', 'inbox-answered', t('ui.inbox.answered', { label: acts.answered })));
 	}
 }
 
@@ -1844,6 +1952,19 @@ function selectInboxEntry(id) {
 			renderInboxBadge();
 		}).catch(() => {});
 	}
+}
+
+/** ↑ / ↓ / Pos1 / Ende in the list: the next entry is shown (and focused). */
+function onInboxListKey(e) {
+	if (e.altKey || e.ctrlKey || e.metaKey) return;
+	const ids = NS.filterItems(inbox.items, inbox.filter).map((x) => x.id);
+	const current = Number(document.activeElement?.closest?.('.inbox-row')?.dataset.id) || inbox.selectedId;
+	const next = NS.stepSelection(ids, current, e.key);
+	if (next === null) return;
+	e.preventDefault();
+	if (next !== inbox.selectedId) selectInboxEntry(next);
+	const row = $(`#inbox-list .inbox-row[data-id="${next}"]`);
+	if (row) { row.focus(); row.scrollIntoView({ block: 'nearest' }); }
 }
 
 /** Pages that exist right now (Chats / Schule / GateDrop / Vault only while the server offers them). */
@@ -1880,12 +2001,15 @@ function openSchool(context) {
 function openInbox(id = null) {
 	if (Number.isSafeInteger(id)) {
 		inbox.selectedId = id;
-		inbox.filter = 'all';
+		// the entry must be in the list: back to all when the filter hides it
+		const entry = inbox.items.find((e) => e.id === id);
+		if (!entry || !NS.filterItems([entry], inbox.filter).length) setInboxFilter({ read: 'all', source: '' });
 	}
 	navigateTo('inbox');
 }
 
 if (notifyAvailable()) {
+	inbox.filter = loadInboxFilter();
 	$('#inbox-read-all').addEventListener('click', async () => {
 		inbox.items.forEach((e) => { if (e.state === 'delivered') e.state = 'read'; });
 		inbox.unread = 0;
@@ -1895,10 +2019,14 @@ if (notifyAvailable()) {
 		loadInbox();
 	});
 
+	for (const btn of document.querySelectorAll('#inbox-read-seg button')) btn.addEventListener('click', () => setInboxFilter({ read: btn.dataset.read }));
+	$('#inbox-source').addEventListener('change', (e) => setInboxFilter({ source: e.currentTarget.value }));
+	$('#inbox-list').addEventListener('keydown', onInboxListKey);
+
 	$('#inbox-empty-action').addEventListener('click', (e) => {
 		const kind = e.currentTarget.dataset.kind;
 		if (kind === 'off') { navigateTo('settings'); selectSettingsTab('notify'); }
-		else if (kind === 'filtered') { inbox.filter = 'all'; renderInbox(); }
+		else if (kind === 'filtered') setInboxFilter({ read: 'all', source: '' });
 		else loadInbox({ refresh: true });
 	});
 
