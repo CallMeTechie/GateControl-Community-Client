@@ -817,26 +817,22 @@ function showSplitStatus(msg, type) {
 let logPeriod = 'all';
 let logLevel = 'all';
 
-const LOG_LINE = /^\[([^\]]+)\]\s*\[(\w+)\]\s*(.*)$/;
+// Entries come parsed from the main process (core utils/log-parse.js);
+// GCLogView (log-view.js) formats the time and filters.
 const LOG_LEVELS = {
-	error: { key: 'ui.logs.levelError', cls: 'c-err', group: 'error' },
-	warn: { key: 'ui.logs.levelWarn', cls: 'c-warn', group: 'warn' },
-	info: { key: 'ui.logs.levelInfo', cls: 'c-info', group: 'info' },
+	error: { key: 'ui.logs.levelError', cls: 'c-err' },
+	warn: { key: 'ui.logs.levelWarn', cls: 'c-warn' },
+	info: { key: 'ui.logs.levelInfo', cls: 'c-info' },
+	debug: { key: 'ui.logs.levelDebug', cls: '' },
 };
-
-function parseLogLine(line) {
-	const m = line.match(LOG_LINE);
-	if (!m) return { time: '', level: '', msg: line };
-	return { time: m[1], level: m[2].toLowerCase(), msg: m[3] };
-}
+const MAX_LOG_ROWS = 1500;
 
 async function refreshLogs() {
 	el.logOutput.textContent = '';
 	el.logEmpty.hidden = false;
 	el.logEmpty.textContent = t('logs.loading');
 	el.logCount.textContent = '';
-	const logText = await logs.get({ period: logPeriod });
-	view.logLines = (logText || '').split('\n').filter(l => l.trim()).map(parseLogLine);
+	view.logLines = GCLogView.toEntries(await logs.get({ period: logPeriod, format: 'entries' }));
 	renderLogs();
 	const card = $('.log-card');
 	if (card) card.scrollTop = 0; // newest on top
@@ -844,29 +840,25 @@ async function refreshLogs() {
 
 function renderLogs() {
 	if (!el.logOutput || !$('#page-logs').classList.contains('active')) return;
-	const query = (el.logSearch.value || '').trim().toLowerCase();
-	const rows = view.logLines.filter(r => {
-		if (logLevel !== 'all') {
-			const group = r.level === 'warning' ? 'warn' : r.level;
-			if (group !== logLevel) return false;
-		}
-		return !query || r.msg.toLowerCase().includes(query) || r.time.toLowerCase().includes(query);
-	});
+	const locale = window.gatecontrol.i18n.getLocale();
+	const rows = GCLogView.filterLogEntries(view.logLines, { level: logLevel, query: el.logSearch.value || '', locale });
 
 	const frag = document.createDocumentFragment();
-	for (const r of rows) {
+	for (const r of rows.slice(0, MAX_LOG_ROWS)) {
 		const row = document.createElement('div');
-		row.className = 'log-row';
+		row.className = `log-row${r.level ? ` lvl-${r.level}` : ''}`;
 		const time = document.createElement('span');
 		time.className = 'log-time';
-		time.textContent = r.time;
+		time.textContent = GCLogView.formatLogTime(r, locale);
+		const full = GCLogView.fullLogTime(r);
+		if (full) time.title = full;
 		const lvl = document.createElement('span');
 		lvl.className = 'log-level';
 		if (r.level) {
-			const info = LOG_LEVELS[r.level === 'warning' ? 'warn' : r.level];
+			const info = LOG_LEVELS[r.level];
 			const chip = document.createElement('span');
-			chip.className = `chip ${info ? info.cls : ''}`;
-			chip.textContent = info ? t(info.key) : r.level;
+			chip.className = `chip ${info.cls}`;
+			chip.textContent = t(info.key);
 			lvl.appendChild(chip);
 		}
 		const msg = document.createElement('span');

@@ -57,6 +57,7 @@
       "levelInfo": "Info",
       "levelWarn": "Warning",
       "levelError": "Error",
+      "levelDebug": "Debug",
       "colTime": "Time",
       "colLevel": "Level",
       "colMessage": "Message"

@@ -39,7 +39,7 @@ const {
   formatBytesShort,
   loadUpdatePublicKey,
   updateMenuItems,
-  mandatoryNotice,
+  updateToast,
   createUpdateInstaller,
   installErrorText,
   createSupportBundleSender,
@@ -647,13 +647,13 @@ async function handleDisconnect() {
 // The app's own notifications go through the notification center: same toast
 // code as push messages, respects "Nicht stören" and "Windows-Benachrichtigung
 // anzeigen" unless opts.force (messages the user must see).
-function showNotification(title, body, { priority = 'normal', collapseKey = null, force = false, onClick = null } = {}) {
+function showNotification(title, body, { priority = 'normal', collapseKey = null, force = false, onClick = null, actions = null } = {}) {
 	if (!notifications) {
 		// Before the services exist (should not happen) fall back to a plain toast.
 		if (Notification.isSupported()) new Notification({ title: `GateControl: ${title}`, body }).show();
 		return null;
 	}
-	return notifications.notify({ title: `GateControl: ${title}`, body, priority, collapseKey, force, onClick });
+	return notifications.notify({ title: `GateControl: ${title}`, body, priority, collapseKey, force, onClick, actions });
 }
 
 // ── Peer-Ablauf-Warnung ─────────────────────────────────
@@ -693,7 +693,7 @@ function showUpdateNotification(release) {
 	if (release.mandatory) {
 		notifyMandatoryUpdate(release);
 	} else {
-		showNotification(t('update.available', { version: release.version }), t('update.readyToInstall'), { collapseKey: 'update' });
+		notifyUpdate(release);
 	}
 	mainWindow?.webContents.send('update-ready', {
 		version: release.version,
@@ -704,13 +704,20 @@ function showUpdateNotification(release) {
 	});
 }
 
+// Toast of a ready update. A click on it (or "Jetzt installieren") runs the
+// same install as the tray entry; the notification center keeps the
+// Notification referenced, so the click still arrives later.
+// (showNotification() puts "GateControl: " in front of the title.)
+function notifyUpdate(info) {
+	const o = updateToast(info, { t, install: () => installUpdateFromToast(), productName: 'GateControl' });
+	showNotification(info.mandatory ? t('update.required') : t('update.title'), o.body, o);
+}
+
 // "Update erforderlich" notification, once per version and app session.
 function notifyMandatoryUpdate(info) {
 	if (!info?.version || mandatoryNotifiedVersion === info.version) return;
 	mandatoryNotifiedVersion = info.version;
-	const notice = mandatoryNotice(info, t);
-	// Must be seen: shown during "Nicht stören" and with toasts switched off.
-	showNotification(notice.title, notice.body, { collapseKey: 'update', force: true, onClick: () => showWindow() });
+	notifyUpdate({ ...info, mandatory: true });
 }
 
 // Installs the update the updater has downloaded and verified (only the
@@ -739,18 +746,31 @@ async function installUpdate() {
 				if (killSwitch?.enabled) await killSwitch.disable();
 			},
 			quit: () => quitApp(),
+			// Not downloaded / verified yet: it is fetched first — say so.
+			onStatus: (state, info) => {
+				if (state !== 'downloading') return;
+				showNotification(t('update.title'), t('update.downloading', { version: info.version || '' }), { collapseKey: 'update', force: true });
+			},
 		});
 	}
 	return runUpdateInstall();
 }
 
 // Tray entry: no window shows the result, a failure becomes a notification.
-function installUpdateFromTray() {
+function installUpdateFromTray({ ignoreBusy = false } = {}) {
 	installUpdate().then((result) => {
+		if (ignoreBusy && result?.code === 'busy') return;
 		const text = installErrorText(result, t);
 		if (!text) return;
 		showNotification(t('update.installFailed'), text, { collapseKey: 'update', force: true, onClick: () => showWindow() });
 	}).catch((err) => log.error('Update-Installation fehlgeschlagen:', err.message));
+}
+
+// Update toast (click / button): same as the tray; a second click while it
+// runs (e.g. still downloading) is no error.
+function installUpdateFromToast() {
+	log.info('Update-Toast angeklickt – starte Installation');
+	installUpdateFromTray({ ignoreBusy: true });
 }
 
 // ── IPC ──────────────────────────────────────────────────────

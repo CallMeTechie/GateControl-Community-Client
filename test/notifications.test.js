@@ -456,8 +456,13 @@ describe('main.js notification wiring', () => {
 
 	it('showNotification() goes through the center (only the fallback creates one directly)', () => {
 		assert.equal((MAIN_JS.match(/new Notification\(/g) || []).length, 1);
-		assert.match(MAIN_JS, /notifications\.notify\(\{ title: `GateControl: \$\{title\}`, body, priority, collapseKey, force, onClick \}\)/);
-		// the mandatory update must always be shown and opens the window
+		assert.match(MAIN_JS, /notifications\.notify\(\{ title: `GateControl: \$\{title\}`, body, priority, collapseKey, force, onClick, actions \}\)/);
+		// update toasts (core updateToast: mandatory ones forced): a click or
+		// "Jetzt installieren" installs like the tray entry
+		assert.match(MAIN_JS, /updateToast\(info, \{ t, install: \(\) => installUpdateFromToast\(\), productName: 'GateControl' \}\)/);
+		assert.match(MAIN_JS, /showNotification\(info\.mandatory \? t\('update\.required'\) : t\('update\.title'\), o\.body, o\)/);
+		assert.match(MAIN_JS, /notifyUpdate\(\{ \.\.\.info, mandatory: true \}\)/);
+		// a failed install from the tray opens the window
 		assert.match(MAIN_JS, /collapseKey: 'update', force: true, onClick: \(\) => showWindow\(\)/);
 	});
 
