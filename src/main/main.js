@@ -60,7 +60,7 @@ const {
 const { SchoolService } = require('@gatecontrol/client-core');
 // Vault (plugin gatecontrol-vault): end-to-end encrypted password manager
 // (core docs/vault.md); quick search window on Strg+Alt+P.
-const { VaultService } = require('@gatecontrol/client-core');
+const { VaultService, windowsHello } = require('@gatecontrol/client-core');
 const { setupVaultQuick } = require('./vault-quick');
 // GateDrop (plugin gatecontrol-gatedrop): send / receive files, LAN listener,
 // "Senden an" in the Explorer (core services/gatedrop.js).
@@ -886,7 +886,9 @@ async function initServices() {
 
 	// Vault: shown while the server lists the plugin. Keys and decrypted entries
 	// stay in this process while unlocked; the offline copy is ciphertext only;
-	// "Angemeldet bleiben" keeps the user key under DPAPI (safeStorage).
+	// "Angemeldet bleiben" keeps the user key under DPAPI (safeStorage);
+	// "Mit Windows Hello entsperren" wraps it under a Windows Hello signature
+	// (core services/windows-hello.js, WinRT via koffi; core docs/vault.md).
 	vault = VaultService ? new VaultService({
 		apiClient,
 		dir: path.join(app.getPath('userData'), 'vault'),
@@ -895,6 +897,8 @@ async function initServices() {
 		notificationCenter: notifications?.notificationCenter,
 		pushClient: notifications?.pushClient,
 		powerMonitor,
+		hello: windowsHello ? windowsHello.createWindowsHello({ log }) : null,
+		helloName: 'GateControl Community Vault',
 		log,
 	}) : null;
 	vaultQuick = vault && setupVaultQuick ? setupVaultQuick({

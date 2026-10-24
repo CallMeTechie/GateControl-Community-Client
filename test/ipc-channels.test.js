@@ -135,12 +135,14 @@ describe('Community IPC channels', { skip }, () => {
 		return handlers;
 	}
 
-	it('the Vault quick search preload only reaches served vault:* channels (and opening a website)', { skip: fs.existsSync(path.join(coreDir || '', 'src', 'ipc', 'vault-handlers.js')) ? false : 'core without Vault' }, () => {
+	it('the Vault quick search preload only reaches served vault:* channels (and opening a website, its own Hello)', { skip: fs.existsSync(path.join(coreDir || '', 'src', 'ipc', 'vault-handlers.js')) ? false : 'core without Vault' }, () => {
 		const invoked = preloadInvokedChannels('vault-quick-preload.js');
-		assert.deepEqual(invoked.filter((ch) => !ch.startsWith('vault:')), ['shell:open-external']);
+		assert.deepEqual(invoked.filter((ch) => !ch.startsWith('vault:')).sort(), ['shell:open-external', 'vault-quick:hello']);
 		assert.ok(invoked.includes('vault:unlock') && invoked.includes('vault:copy') && invoked.includes('vault:entries'));
 		const handlers = register();
-		for (const ch of invoked) assert.equal(typeof handlers[ch], 'function', ch);
+		for (const ch of invoked.filter((c) => c !== 'vault-quick:hello')) assert.equal(typeof handlers[ch], 'function', ch);
+		// Windows Hello goes through the quick window's own main side (it steps back for the dialog)
+		assert.match(fs.readFileSync(path.join(ROOT, 'src', 'main', 'vault-quick.js'), 'utf8'), /ipcMain\.handle\('vault-quick:hello'/);
 	});
 
 	it('serves every channel the preload invokes', () => {
