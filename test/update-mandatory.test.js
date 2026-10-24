@@ -12,7 +12,7 @@ const path = require('node:path');
 
 const ROOT = path.join(__dirname, '..');
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
-const { updateCardState, channelLabelKey } = require('../src/renderer/update-state');
+const { updateCardState, channelLabelKey, installErrorText } = require('../src/renderer/update-state');
 
 describe('updateCardState', () => {
   it('hidden without a ready update', () => {
@@ -58,8 +58,31 @@ describe('wiring', () => {
     assert.match(fn, /if \(st\.dismissable\) \{/);
     // the notice itself only gets an install button
     const notice = fn.slice(fn.indexOf("notice.id = 'update-required-banner'"));
-    assert.match(notice, /update\.install\(\)/);
+    assert.match(notice, /installUpdateNow\(\)/);
     assert.doesNotMatch(notice, /\.remove\(\)\);/);
+  });
+
+  it('a failed install shows its reason in the card (no silent nothing)', () => {
+    const fn = renderer.match(/async function installUpdateNow\(\) \{([\s\S]*?)\n\}/);
+    assert.ok(fn, 'installUpdateNow');
+    assert.match(fn[1], /await update\.install\(\)/);
+    assert.match(fn[1], /installErrorText\(result, t\)/);
+    const card = /function renderUpdateCard\(\) \{[\s\S]*?\n\}/.exec(renderer)[0];
+    assert.match(card, /updateStatusText\(/);
+    assert.match(card, /installBtn\.addEventListener\('click', \(\) => installUpdateNow\(\)\)/);
+    assert.doesNotMatch(card, /update\.install\(\)/);
+    const t = (k) => k;
+    assert.equal(installErrorText({ ok: true }, t), null);
+    assert.equal(installErrorText({ ok: false, code: 'exited', message: 'Exit-Code 2', vpnRestored: true }, t),
+      'update.installFailed: update.installError.exited (Exit-Code 2) update.installVpnRestored');
+  });
+
+  it('main: the tray entry reports a failed install as a notification', () => {
+    assert.match(main, /install: \(\) => installUpdateFromTray\(\)/);
+    const fn = main.match(/function installUpdateFromTray\(\) \{([\s\S]*?)\n\}/);
+    assert.ok(fn);
+    assert.match(fn[1], /installErrorText\(result, t\)/);
+    assert.match(fn[1], /showNotification\(/);
   });
 
   it('shows the channel read-only in Settings → About', () => {
@@ -80,7 +103,7 @@ describe('wiring', () => {
     for (const lang of ['de', 'en']) {
       const loc = JSON.parse(fs.readFileSync(path.join(core, 'src', 'i18n', 'locales', `${lang}.json`), 'utf8'));
       for (const k of ['required', 'requiredDesc', 'requiredDescNoMin', 'requiredTunnelHint', 'channel', 'channelHint',
-        'channelStable', 'channelBeta', 'channelUnknown', 'installRequired', 'install', 'later']) {
+        'channelStable', 'channelBeta', 'channelUnknown', 'installRequired', 'install', 'later', 'installStarting', 'installFailed', 'installVpnRestored']) {
         assert.equal(typeof loc.update[k], 'string', `${lang}: update.${k}`);
       }
     }

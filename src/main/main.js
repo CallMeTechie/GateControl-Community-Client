@@ -40,6 +40,8 @@ const {
   loadUpdatePublicKey,
   updateMenuItems,
   mandatoryNotice,
+  createUpdateInstaller,
+  installErrorText,
   createSupportBundleSender,
   collectSupportBundle,
   getMachineFingerprint,
@@ -62,7 +64,7 @@ const { VaultService } = require('@gatecontrol/client-core');
 const { setupVaultQuick } = require('./vault-quick');
 // GateDrop (plugin gatecontrol-gatedrop): send / receive files, LAN listener,
 // "Senden an" in the Explorer (core services/gatedrop.js).
-const { GateDropService, gatedropShell } = require('@gatecontrol/client-core');
+const { GateDropService, GateDropFirewall, gatedropShell } = require('@gatecontrol/client-core');
 const { setupGateDrop } = require('./gatedrop');
 const { shortDeviceId, withDeviceId } = require('./device-id');
 const { setupNotifications } = require('./notifications');
@@ -205,7 +207,7 @@ function updateTray(state) {
 		update: pendingUpdate,
 		mandatory: !!updater?.isMandatory(),
 		t,
-		install: () => installUpdate(),
+		install: () => installUpdateFromTray(),
 	});
 
 	const contextMenu = Menu.buildFromTemplate([
@@ -711,35 +713,44 @@ function notifyMandatoryUpdate(info) {
 	showNotification(notice.title, notice.body, { collapseKey: 'update', force: true, onClick: () => showWindow() });
 }
 
+// Installs the update the updater has downloaded and verified (only the
+// updater's verified state counts: a manual check may leave the cached
+// release info unset or without an installer path).
+// Core utils/update-install.js: the installer is re-hashed BEFORE the tunnel
+// goes down (failure → the VPN stays), then the tunnel is disconnected and
+// the kill switch lifted (the user's kill-switch preference stays, the new
+// version re-enables it on connect), then the installer starts and is
+// watched for a moment; a failed start reconnects the tunnel and returns the
+// reason ({ ok:false, code, message, vpnRestored }) for the update card.
+// Only a running installer ends the app.
+let runUpdateInstall = null;
 async function installUpdate() {
-	// Only the updater's verified state counts: a manual check may leave
-	// the cached release info unset or without an installer path.
-	if (!updater?.isUpdateReady()) {
-		log.warn('Update-Installation angefordert, aber kein geprüftes Update bereit');
-		return false;
+	if (!runUpdateInstall) {
+		runUpdateInstall = createUpdateInstaller({
+			getUpdater: () => updater,
+			log,
+			isConnected: () => tunnelState.connected,
+			disconnect: () => disconnectTunnel(),
+			reconnect: async () => {
+				await connectTunnel();
+				if (!tunnelState.connected) throw new Error('Tunnel nicht verbunden');
+			},
+			liftFirewall: async () => {
+				if (killSwitch?.enabled) await killSwitch.disable();
+			},
+			quit: () => quitApp(),
+		});
 	}
+	return runUpdateInstall();
+}
 
-	log.info('Update-Installation gestartet...');
-
-	if (tunnelState.connected) {
-		await disconnectTunnel();
-	}
-
-	// Lift the firewall rules for the installer, but keep the user's
-	// kill-switch preference — the new version re-enables it on connect.
-	if (killSwitch?.enabled) {
-		try {
-			await killSwitch.disable();
-		} catch (err) {
-			log.error('Kill-Switch konnte vor dem Update nicht deaktiviert werden:', err.message);
-		}
-	}
-
-	// Re-hashes the installer before starting it.
-	if (!updater.install()) return false;
-
-	setTimeout(() => quitApp(), 1500);
-	return true;
+// Tray entry: no window shows the result, a failure becomes a notification.
+function installUpdateFromTray() {
+	installUpdate().then((result) => {
+		const text = installErrorText(result, t);
+		if (!text) return;
+		showNotification(t('update.installFailed'), text, { collapseKey: 'update', force: true, onClick: () => showWindow() });
+	}).catch((err) => log.error('Update-Installation fehlgeschlagen:', err.message));
 }
 
 // ── IPC ──────────────────────────────────────────────────────
@@ -902,6 +913,10 @@ async function initServices() {
 	gatedrop = GateDropService && setupGateDrop ? setupGateDrop({
 		app, store, log, apiClient, notifications,
 		GateDropService, gatedropShell,
+		// Windows Firewall check / repair of the inbound rule (not in e2e runs:
+		// they must not touch the firewall of the test machine).
+		GateDropFirewall: e2e ? null : GateDropFirewall,
+		edition: 'community',
 		shell, clipboard, dialog, t,
 		protocol: 'gatecontrol-community',
 		toastImagePath: path.join(RESOURCES_PATH, 'icons', 'app-icon.png'),
