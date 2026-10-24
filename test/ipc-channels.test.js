@@ -41,7 +41,7 @@ const skip = usable ? false : 'gatecontrol-client-core (with dependencies) not a
 
 // Load the real preload with a fake electron and call every exposed function
 // once; returns the channels it invokes (core bridge + Community additions).
-function preloadInvokedChannels() {
+function preloadInvokedChannels(name = 'preload.js') {
 	const invoked = new Set();
 	let api = null;
 	const electron = {
@@ -56,7 +56,7 @@ function preloadInvokedChannels() {
 		if (request === 'electron') return electron;
 		return realLoad.call(this, request, ...rest);
 	};
-	const file = path.join(ROOT, 'src', 'main', 'preload.js');
+	const file = path.join(ROOT, 'src', 'main', name);
 	try {
 		delete require.cache[file];
 		require(file);
@@ -128,10 +128,20 @@ describe('Community IPC channels', { skip }, () => {
 			school: { on() {}, status: () => ({ state: 'unavailable' }) },
 			// … and GateDrop (gatedrop:* channels)
 			gatedrop: { on() {}, status: () => ({ state: 'unavailable' }) },
+			// … and Vault (vault:* channels)
+			vault: { on() {}, touch() {}, status: () => ({ state: 'unavailable' }) },
 			...extra,
 		});
 		return handlers;
 	}
+
+	it('the Vault quick search preload only reaches served vault:* channels (and opening a website)', { skip: fs.existsSync(path.join(coreDir || '', 'src', 'ipc', 'vault-handlers.js')) ? false : 'core without Vault' }, () => {
+		const invoked = preloadInvokedChannels('vault-quick-preload.js');
+		assert.deepEqual(invoked.filter((ch) => !ch.startsWith('vault:')), ['shell:open-external']);
+		assert.ok(invoked.includes('vault:unlock') && invoked.includes('vault:copy') && invoked.includes('vault:entries'));
+		const handlers = register();
+		for (const ch of invoked) assert.equal(typeof handlers[ch], 'function', ch);
+	});
 
 	it('serves every channel the preload invokes', () => {
 		const invoked = preloadInvokedChannels();
