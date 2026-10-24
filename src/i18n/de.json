@@ -57,6 +57,7 @@
       "levelInfo": "Info",
       "levelWarn": "Warnung",
       "levelError": "Fehler",
+      "levelDebug": "Debug",
       "colTime": "Zeit",
       "colLevel": "Stufe",
       "colMessage": "Meldung"

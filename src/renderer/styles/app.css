@@ -444,14 +444,17 @@ html[data-theme="light"] .gc .icon-moon { display: block; }
 .gc .search svg { position: absolute; left: 12px; top: 12px; pointer-events: none; }
 .gc .search .inp { padding-left: 36px; }
 .gc .log-card { flex-grow: 1; min-height: 200px; padding: 6px 0; }
-.gc .log-row { display: flex; gap: 8px; align-items: center; padding: 7px 16px; font-size: 12.5px; }
+.gc .log-row { display: flex; gap: 12px; align-items: center; padding: 7px 16px; font-size: 12.5px; }
 .gc .log-row + .log-row, .gc .log-output .log-row { border-top: 1px solid var(--line); }
 .gc .log-row-head { color: var(--faint); border-top: 0 !important; }
-.gc .log-time { width: 185px; flex-shrink: 0; color: var(--muted); white-space: nowrap; }
-.gc .log-level { width: 88px; flex-shrink: 0; }
+/* "24.10. 20:58:32" in the mono font of the table */
+.gc .log-time { width: 15.5ch; flex-shrink: 0; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.gc .log-level { width: 84px; flex-shrink: 0; }
 .gc .log-level .chip { height: 20px; font-size: 11px; }
 .gc .log-msg { flex-grow: 1; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
-.gc .log-output .log-row { align-items: flex-start; }
+.gc .log-output .log-row { align-items: baseline; }
+.gc .log-row.lvl-error .log-msg { color: var(--err); }
+.gc .log-row.lvl-debug .log-msg { color: var(--muted); }
 
 /* ── Einstellungen ───────────────────────────────────── */
 .gc .settings { display: flex; height: 100%; }

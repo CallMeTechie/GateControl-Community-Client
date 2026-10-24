@@ -82,6 +82,55 @@ test.describe('signed auto-update', () => {
   // The installer does not start (spawn refused, shell fallback fails):
   // before, the app disconnected the VPN and nothing happened. Now the card
   // says why and the app keeps running.
+  // A click on the "Update verfügbar" toast installs it. Before, the toast
+  // only went away and installing needed the tray menu.
+  test('scheduled check → click on the update toast starts the verified installer and quits', async ({ launchApp, mock, offerUpdate }) => {
+    const offer = offerUpdate('valid');
+    const { page, exited, events, runScheduledUpdateCheck, clickToast } = await launchApp();
+    await setupWithApiKey(page, mock);
+
+    await runScheduledUpdateCheck();
+    await expect(updateBanner(page)).toBeVisible();
+    expect(await clickToast(escapeRegExp(OFFERED_VERSION))).toBe(true);
+    await expectQuit(exited);
+    expectInstallerLaunched(events(), offer);
+  });
+
+  // No verified file (gone, or not downloaded yet): the click fetches the
+  // update first and then installs, instead of "kein geprüftes Update bereit".
+  test('toast click without a verified installer downloads it again, then installs', async ({ launchApp, mock, offerUpdate }) => {
+    const offer = offerUpdate('valid');
+    const { page, exited, events, runScheduledUpdateCheck, clickToast, dropDownloadedUpdate } = await launchApp();
+    await setupWithApiKey(page, mock);
+
+    await runScheduledUpdateCheck();
+    await expect(updateBanner(page)).toBeVisible();
+    expect(mock.count(DOWNLOAD(offer))).toBe(1);
+    expect(await dropDownloadedUpdate()).toBe(true);
+
+    expect(await clickToast(escapeRegExp(OFFERED_VERSION))).toBe(true);
+    await expectQuit(exited);
+    expect(mock.count(DOWNLOAD(offer))).toBe(2);
+    expectInstallerLaunched(events(), offer);
+  });
+
+  // Regression (log 1.43.1): two checks at once started two downloads into
+  // the same file; the second overwrote the verified installer, the install
+  // was rejected ("nach dem Download verändert"), then ENOENT on rename.
+  test('two update checks at once download once and the install works', async ({ launchApp, mock, offerUpdate }) => {
+    const offer = offerUpdate('valid');
+    const { app, page, exited, events } = await launchApp();
+    await setupWithApiKey(page, mock);
+
+    await app.evaluate(() => Promise.all([globalThis.__gcE2E.updater._check(), globalThis.__gcE2E.updater.check()]));
+    expect(mock.count(DOWNLOAD(offer))).toBe(1);
+    await expect(updateBanner(page)).toBeVisible();
+
+    await updateInstallButton(page).click();
+    await expectQuit(exited);
+    expectInstallerLaunched(events(), offer);
+  });
+
   test('installer does not start: the card shows why, the app keeps running', async ({ launchApp, mock, offerUpdate }) => {
     offerUpdate('valid');
     const { app, page, events, runScheduledUpdateCheck } = await launchApp();
