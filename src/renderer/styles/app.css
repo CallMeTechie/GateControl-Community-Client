@@ -279,6 +279,8 @@ html[data-theme="light"] .gc .icon-moon { display: block; }
 /* Mandatory update (server: below the minimum version) — cannot be dismissed */
 .gc .update-card.mandatory { background: var(--err-bg); }
 .gc .update-card.mandatory .update-card-head svg { color: var(--err); }
+/* the installer did not start: the reason (sidebar card and required notice) */
+.gc .update-card p.update-error, .gc .update-error { color: var(--err); }
 #update-required-slot:not(:empty) { margin-bottom: 14px; }
 
 .gc .device-info { padding: 0 12px; display: flex; flex-direction: column; gap: 2px; }

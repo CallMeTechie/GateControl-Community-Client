@@ -15,6 +15,8 @@ let currentPortalUrl = null;
 // minimum version / mandatory, assigned by the server, read-only here).
 let pendingUpdate = null;
 let updateCardHidden = false;
+let updateInstalling = false;     // "installieren" clicked, waiting for the installer
+let updateInstallError = null;    // why the installer did not start (shown in the card)
 let updatePolicy = null;
 // Client policy from the server (core ClientPolicyService state):
 // { fetched, managed, policy, locks, splitModes }. Unmanaged until loaded.
@@ -1060,7 +1062,34 @@ const UPDATE_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"
 function showUpdateBanner(info) {
 	pendingUpdate = info;
 	updateCardHidden = false;
+	updateInstallError = null;
 	renderUpdateCard();
+}
+
+// Starts the installer (main: re-hash, then VPN down, then start). A failure
+// comes back with the reason and stays in the card instead of nothing happening.
+async function installUpdateNow() {
+	if (updateInstalling) return;
+	updateInstalling = true;
+	updateInstallError = null;
+	renderUpdateCard();
+	let result;
+	try {
+		result = await update.install();
+	} catch (err) {
+		result = { ok: false, code: 'launch_failed', message: err && err.message };
+	}
+	const text = window.GCUpdateState.installErrorText(result, t);
+	if (!text) return; // the installer runs, the app ends in a moment
+	updateInstalling = false;
+	updateInstallError = text;
+	renderUpdateCard();
+}
+
+/** Text under the card / notice title: install state wins over the description. */
+function updateStatusText(fallback) {
+	if (updateInstalling) return t('update.installStarting');
+	return updateInstallError || fallback;
 }
 
 function applyUpdatePolicy(policy) {
@@ -1096,7 +1125,8 @@ function renderUpdateCard() {
 		card.appendChild(head);
 
 		const text = document.createElement('p');
-		text.textContent = st.mandatory ? `${requiredText(st)} ${t('update.requiredTunnelHint')}` : t('update.readyToInstall');
+		text.textContent = updateStatusText(st.mandatory ? `${requiredText(st)} ${t('update.requiredTunnelHint')}` : t('update.readyToInstall'));
+		if (updateInstallError && !updateInstalling) text.className = 'update-error';
 		card.appendChild(text);
 
 		const actions = document.createElement('div');
@@ -1106,7 +1136,8 @@ function renderUpdateCard() {
 		installBtn.type = 'button';
 		installBtn.className = 'btn btn-sec btn-sm';
 		installBtn.textContent = t('update.install');
-		installBtn.addEventListener('click', () => update.install());
+		installBtn.disabled = updateInstalling;
+		installBtn.addEventListener('click', () => installUpdateNow());
 		actions.appendChild(installBtn);
 
 		if (st.dismissable) {
@@ -1135,8 +1166,8 @@ function renderUpdateCard() {
 		const strong = document.createElement('strong');
 		strong.textContent = t('update.required');
 		const desc = document.createElement('div');
-		desc.className = 'muted';
-		desc.textContent = `${requiredText(st)} ${t('update.requiredTunnelHint')}`;
+		desc.className = updateInstallError && !updateInstalling ? 'muted update-error' : 'muted';
+		desc.textContent = updateStatusText(`${requiredText(st)} ${t('update.requiredTunnelHint')}`);
 		body.appendChild(strong);
 		body.appendChild(desc);
 		notice.appendChild(body);
@@ -1145,7 +1176,8 @@ function renderUpdateCard() {
 		installBtn.id = 'update-required-install';
 		installBtn.className = 'btn btn-sec';
 		installBtn.textContent = t('update.install');
-		installBtn.addEventListener('click', () => update.install());
+		installBtn.disabled = updateInstalling;
+		installBtn.addEventListener('click', () => installUpdateNow());
 		notice.appendChild(installBtn);
 		$('#update-required-slot').appendChild(notice);
 	}
