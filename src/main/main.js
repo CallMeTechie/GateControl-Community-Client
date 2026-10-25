@@ -56,6 +56,8 @@ const {
   MessengerService,
   ChatNotifier,
 } = require('@gatecontrol/client-core');
+// Window guard for every webContents (core utils/window-guard).
+const { installWindowGuard } = require('@gatecontrol/client-core');
 // Schule (plugin gatecontrol-schule): WebUntis timetable (core services/school.js).
 const { SchoolService } = require('@gatecontrol/client-core');
 // Vault (plugin gatecontrol-vault): end-to-end encrypted password manager
@@ -84,6 +86,17 @@ if (!gotLock) {
 	app.exit(0);
 	process.exit(0);
 }
+
+// ── Fenster-Schutz ───────────────────────────────────────────
+// Every window (main window, Vault quick search, …): only the app's own
+// pages, http(s) links in the system browser, no new windows, no <webview>
+// (core utils/window-guard). Links of the renderer go through
+// shell:open-external and are not affected.
+installWindowGuard(app, {
+	appRoots: [path.join(__dirname, '..', 'renderer')],
+	getShell: () => shell,
+	log,
+});
 
 // ── Store ────────────────────────────────────────────────────
 const { store } = createStores({
