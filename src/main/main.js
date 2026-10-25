@@ -58,6 +58,11 @@ const {
 } = require('@gatecontrol/client-core');
 // Window guard for every webContents (core utils/window-guard).
 const { installWindowGuard } = require('@gatecontrol/client-core');
+// Autostart: Task Scheduler task from a task XML (core utils/autostart-task).
+const { autostartTask } = require('@gatecontrol/client-core');
+const { createAutostart } = require('./autostart');
+const { execFile } = require('child_process');
+const { promisify } = require('util');
 // Schule (plugin gatecontrol-schule): WebUntis timetable (core services/school.js).
 const { SchoolService } = require('@gatecontrol/client-core');
 // Vault (plugin gatecontrol-vault): end-to-end encrypted password manager
@@ -547,13 +552,26 @@ function policyLocks() {
 	return clientPolicyUtil.locks(clientPolicy ? clientPolicy.getPolicy() : null);
 }
 
-function setAutostart(enabled) {
+// Autostart via Task Scheduler (requireAdministrator: Windows does not start
+// elevated programs from the Run key). Removes the old Run-key entry.
+// Not in the e2e test (no changes to the system).
+const LOGIN_ITEM = { path: process.execPath, args: ['--minimized'] };
+const setAutostartTask = createAutostart({
+	autostartTask,
+	execFile: promisify(execFile),
+	getExePath: () => app.getPath('exe'),
+	getTempPath: () => app.getPath('temp'),
+	// Electron deletes the Run-key value by name (the AppUserModelId), whatever it holds.
+	removeLoginItem: () => {
+		const was = app.getLoginItemSettings(LOGIN_ITEM).openAtLogin;
+		app.setLoginItemSettings({ ...LOGIN_ITEM, openAtLogin: false });
+		if (was) log.info('Autostart: old Run-key entry removed');
+	},
+	log,
+});
+async function setAutostart(enabled) {
 	if (e2e) return;
-	app.setLoginItemSettings({
-		openAtLogin: enabled,
-		path: process.execPath,
-		args: ['--minimized'],
-	});
+	await setAutostartTask(enabled === true);
 }
 
 /**
@@ -571,7 +589,7 @@ async function applyClientPolicy({ startup = false } = {}) {
 		try { await killSwitch.enable(WG_CONFIG_FILE); } catch (err) { log.error('Kill-switch (policy) failed:', err.message); }
 	}
 	if (Object.prototype.hasOwnProperty.call(changed, 'app.startWithWindows')) {
-		try { setAutostart(changed['app.startWithWindows']); } catch (err) { log.warn('Autostart (policy) failed:', err.message); }
+		setAutostart(changed['app.startWithWindows']).catch((err) => log.warn('Autostart (policy) failed:', err.message));
 	}
 	if (!startup) {
 		const hasServer = store.get('server.url', '') !== '';
@@ -1074,6 +1092,19 @@ app.whenReady().then(async () => {
 		getTunnelState: () => tunnelState,
 		wgConfigFile: WG_CONFIG_FILE,
 		edition: 'community',
+		// requireAdministrator: the Run key does not start elevated apps → Task Scheduler.
+		overrides: {
+			'autostart:set': async (_, enabled) => {
+				enabled = enabled === true;
+				try {
+					await setAutostart(enabled);
+				} catch (err) {
+					log.error('Autostart configuration failed:', err.message);
+				}
+				store.set('app.startWithWindows', enabled);
+				return enabled;
+			},
+		},
 		// notify:* channels + events, reset on server:setup (core, opt-in)
 		notificationCenter: notifications?.notificationCenter,
 		// chat:* channels + events, reset on server:setup (core, opt-in)
@@ -1196,16 +1227,11 @@ app.whenReady().then(async () => {
 		},
 	});
 
-	// Autostart (nicht im E2E-Test)
-	if (!e2e && store.get('app.startWithWindows', true)) {
-		app.setLoginItemSettings({
-			openAtLogin: true,
-			path: process.execPath,
-			args: ['--minimized'],
-		});
-	} else if (clientPolicy.getPolicy().autostart === 'forbidden') {
-		setAutostart(false);
-	}
+	// Autostart mit Windows abgleichen (Taskplaner; nicht im E2E-Test): an →
+	// Aufgabe anlegen/ersetzen, alten Run-Key-Eintrag entfernen; aus → beides
+	// entfernen.
+	const autostartOn = store.get('app.startWithWindows', true) && clientPolicy.getPolicy().autostart !== 'forbidden';
+	setAutostart(autostartOn).catch((err) => log.warn('Autostart sync failed:', err.message));
 
 	log.info('GateControl Client bereit');
 });

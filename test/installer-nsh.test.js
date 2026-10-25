@@ -306,6 +306,21 @@ describe('NSIS installer script (scripts/installer.nsh)', () => {
     }
   });
 
+  it('removes the autostart task the app registers, only on a real uninstall', () => {
+    // src/main/autostart.js registers it (task from a task XML, see there)
+    const { AUTOSTART_TASK } = require(path.join(ROOT, 'src', 'main', 'autostart.js'));
+    assert.equal(AUTOSTART_TASK, 'GateControlCommunityAutostart');
+    const body = macroBody('customUnInstall');
+    const del = body.indexOf('schtasks /Delete /F /TN "' + AUTOSTART_TASK + '"');
+    assert.ok(del > 0, 'customUnInstall loescht die Autostart-Aufgabe ' + AUTOSTART_TASK + ' nicht');
+    // inside ${IfNot} ${isUpdated} ... ${EndIf}: an update keeps the task
+    const start = body.indexOf('${IfNot} ${isUpdated}');
+    const end = body.indexOf('${EndIf}', start);
+    assert.ok(start >= 0 && start < del && del < end, 'Autostart-Aufgabe darf nur bei echter Deinstallation geloescht werden');
+    // never the task of the other edition
+    assert.ok(!code.includes('GateControlProAutostart'), 'Community-Deinstaller darf die Pro-Aufgabe nicht loeschen');
+  });
+
   it('GateDrop: inbound TCP 47731 for the app exe, local subnet only, every profile; removed on uninstall', () => {
     assert.equal(defines.GC_GATEDROP_PORT, '47731');
     assert.equal(defines.GC_GATEDROP_RULE, 'GateControl Community GateDrop');

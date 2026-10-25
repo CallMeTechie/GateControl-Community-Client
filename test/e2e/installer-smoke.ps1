@@ -25,6 +25,8 @@ $cfg = @{
     DataDir       = 'gatecontrol-client-pro'
     # URL protocol of the toast buttons (app: setAsDefaultProtocolClient, HKCU)
     Protocol      = 'gatecontrol-pro'
+    # Task Scheduler task "start with Windows" (src/main/autostart.js)
+    AutostartTask = 'GateControlProAutostart'
   }
   community = @{
     Product       = 'GateControl Community Client'
@@ -34,6 +36,10 @@ $cfg = @{
     DataDir       = 'gatecontrol-client'
     # URL protocol of the toast buttons (app: setAsDefaultProtocolClient, HKCU)
     Protocol      = 'gatecontrol-community'
+    # Task Scheduler task "start with Windows" (src/main/autostart.js)
+    AutostartTask = 'GateControlCommunityAutostart'
+    # Old Run-key autostart (Electron login item, value name = AppUserModelId)
+    RunValue      = 'GateControl Client'
   }
 }[$Edition]
 
@@ -143,6 +149,16 @@ function LaunchProbe([string]$label, [int]$Seconds = 15) {
   return $alive
 }
 
+# Community before the Task Scheduler autostart: a Run-key entry (which
+# Windows ignores for an app with requireAdministrator). The app must remove
+# it on start (migration).
+$runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+if ($cfg.RunValue) {
+  # A fresh runner profile may not have the Run key yet.
+  if (-not (Test-Path $runKey)) { New-Item -Path $runKey -Force | Out-Null }
+  New-ItemProperty -Path $runKey -Name $cfg.RunValue -Value "`"$exe`" --minimized" -PropertyType String -Force | Out-Null
+}
+
 Write-Host "`n== Launch packaged app"
 $ok = LaunchProbe 'plain'
 Check $ok "packaged app keeps running for 15 s"
@@ -170,6 +186,28 @@ Check (-not (Test-Path (Join-Path $e2eDir 'userData'))) "packaged app ignored GC
 $ksRules = @(GcRules | Where-Object { $_.DisplayName -like "$($cfg.RulePrefix)_*" })
 Check ($ksRules.Count -eq 0) "no kill-switch/RDP-allow rules after app start"
 
+# The app registers its autostart task on every start while "start with
+# Windows" is on (default), from a task XML (src/main/autostart.js): no 3-day
+# execution time limit, starts and keeps running on battery, normal priority.
+# The two launches above have registered it.
+$task = $cfg.AutostartTask
+$taskXml = (schtasks /Query /TN $task /XML 2>$null) -join "`n"
+Check ($LASTEXITCODE -eq 0 -and $taskXml) "autostart task $task registered by the app"
+if ($taskXml) {
+  Check ($taskXml -match '<ExecutionTimeLimit>PT0S</ExecutionTimeLimit>') "autostart task: no execution time limit (PT0S)"
+  Check ($taskXml -match '<DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>') "autostart task: starts on battery"
+  Check ($taskXml -match '<StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>') "autostart task: keeps running on battery"
+  Check ($taskXml -match '<Priority>4</Priority>') "autostart task: normal priority (4)"
+  Check ($taskXml -match '<RunLevel>HighestAvailable</RunLevel>') "autostart task: elevated (HighestAvailable)"
+  Check ($taskXml -match ('<Command>"?' + [regex]::Escape($exe) + '"?</Command>')) "autostart task starts the installed exe"
+}
+if ($cfg.RunValue) {
+  $runLeft = (Get-ItemProperty -Path $runKey -ErrorAction SilentlyContinue).($cfg.RunValue)
+  Check (-not $runLeft) "old Run-key autostart '$($cfg.RunValue)' removed by the app"
+}
+$mainLog = Join-Path $userData 'logs\main.log'
+if (Test-Path $mainLog) { Select-String -Path $mainLog -Pattern 'Autostart' | Select-Object -Last 4 | ForEach-Object { Write-Host "  log: $($_.Line)" } }
+
 # ── Uninstall ────────────────────────────────────────────
 Write-Host "`n== Silent uninstall"
 $p = Start-Process -FilePath $uninstaller -ArgumentList '/S' -Wait -PassThru
@@ -191,11 +229,10 @@ Check ($left.Count -eq 0) "all GateControl firewall rules removed: $(($left | Fo
 Check ((OutboundPolicy) -eq $policyBefore) "outbound firewall policy unchanged after uninstall"
 Check (-not (Test-Path $protoKey)) "URL protocol $($cfg.Protocol):// removed by uninstall"
 
+schtasks /Query /TN $task *> $null
+Check ($LASTEXITCODE -ne 0) "autostart task $task removed by uninstall"
+
 # Informational: leftovers outside the install dir (not failures).
-if ($Edition -eq 'pro') {
-  schtasks /Query /TN GateControlProAutostart *> $null
-  if ($LASTEXITCODE -eq 0) { Write-Host "::warning::Autostart task GateControlProAutostart still exists after uninstall" }
-}
 if (Test-Path $instDir) { Write-Host "Note: $instDir still exists: $((Get-ChildItem -Recurse $instDir | ForEach-Object FullName) -join ', ')" }
 
 if ($failures.Count -gt 0) {
@@ -204,3 +241,5 @@ if ($failures.Count -gt 0) {
   exit 1
 }
 Write-Host "`nInstaller smoke test passed."
+# Explicit: the last native command (schtasks /Query on a removed task) exits 1.
+exit 0
