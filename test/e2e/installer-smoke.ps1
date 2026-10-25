@@ -154,6 +154,8 @@ function LaunchProbe([string]$label, [int]$Seconds = 15) {
 # it on start (migration).
 $runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 if ($cfg.RunValue) {
+  # A fresh runner profile may not have the Run key yet.
+  if (-not (Test-Path $runKey)) { New-Item -Path $runKey -Force | Out-Null }
   New-ItemProperty -Path $runKey -Name $cfg.RunValue -Value "`"$exe`" --minimized" -PropertyType String -Force | Out-Null
 }
 
