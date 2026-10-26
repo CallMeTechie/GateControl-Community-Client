@@ -410,6 +410,32 @@
 								<div class="field-status" id="server-status" role="status" hidden></div>
 							</section>
 
+							<!-- Company sign-in: only when the server in "Server-URL" offers it (GET /api/v1/client/signin) -->
+							<section class="card set-card" id="signin-card" hidden>
+								<h3 class="set-card-title" data-i18n="ui.signin.title">Mit Firmenkonto anmelden</h3>
+								<p class="set-card-desc"><span data-i18n="ui.signin.desc">Statt mit einem Einrichtungscode: mit deinem Konto bei</span> <span class="mono" id="signin-host"></span></p>
+								<div class="field-actions" id="signin-ms" hidden></div>
+								<div class="field" id="signin-user-field">
+									<label for="signin-user" data-i18n="ui.signin.user">E-Mail oder Benutzername</label>
+									<input class="inp" id="signin-user" type="text" spellcheck="false" autocomplete="username" maxlength="256">
+								</div>
+								<div class="field" id="signin-pass-field">
+									<label for="signin-pass" data-i18n="ui.signin.password">Passwort</label>
+									<input class="inp" id="signin-pass" type="password" autocomplete="current-password" maxlength="1024">
+									<span class="field-hint" id="signin-hint" hidden></span>
+								</div>
+								<div class="field" id="signin-totp-field" hidden>
+									<label for="signin-totp" data-i18n="ui.signin.totp">Bestätigungscode</label>
+									<input class="inp mono" id="signin-totp" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="123456" spellcheck="false">
+									<span class="field-hint" data-i18n="ui.signin.totpHint">6 Ziffern aus deiner Authenticator-App</span>
+								</div>
+								<div class="field-actions">
+									<button class="btn btn-pri" id="btn-signin" type="button" disabled><span data-i18n="ui.signin.submit">Anmelden</span></button>
+									<button class="btn btn-sec" id="btn-signin-cancel" type="button" hidden><span data-i18n="action.cancel">Abbrechen</span></button>
+								</div>
+								<div class="field-status" id="signin-status" role="status" hidden></div>
+							</section>
+
 							<section class="card set-card">
 								<h3 class="set-card-title" data-i18n="settings.importConfig">Konfiguration importieren</h3>
 								<p class="set-card-desc" data-i18n="ui.settings.importDesc"></p>

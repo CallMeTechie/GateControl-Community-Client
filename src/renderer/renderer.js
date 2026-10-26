@@ -3,7 +3,7 @@
  * UI-Logik und State Management
  */
 
-const { tunnel, server, config, killSwitch, rdpAllow, autostart, logs, update, services, traffic, dns, shell, peer, permissions, onPortalUrl, portal, getVersion, getDeviceId, window: win, locale, policy: clientPolicy, notify: notifyApi, chat: chatApi, school: schoolApi, gatedrop: gatedropApi, vault: vaultApi } = window.gatecontrol;
+const { tunnel, server, config, killSwitch, rdpAllow, autostart, logs, update, services, traffic, dns, shell, peer, permissions, onPortalUrl, portal, getVersion, getDeviceId, window: win, locale, policy: clientPolicy, notify: notifyApi, chat: chatApi, school: schoolApi, gatedrop: gatedropApi, vault: vaultApi, signin: signinApi } = window.gatecontrol;
 const { t } = window.gatecontrol.i18n;
 
 // Aktive Berechtigungen (werden beim Connect geladen)
@@ -217,6 +217,9 @@ function navigateTo(page) {
 	// Vault: footer in the status bar, secrets leave the screen with the page
 	if (page === 'vault' && prev !== 'vault') vaultView?.show();
 	else if (prev === 'vault' && page !== 'vault') vaultView?.hide();
+	// Company sign-in: offered for the server in "Server-URL"; a waiting browser sign-in ends with the page
+	if (page === 'settings' && prev !== 'settings') lookupSignin({ keep: true });
+	else if (prev === 'settings' && page !== 'settings') cancelSignin();
 }
 
 // Navigation aus dem Main Process
@@ -608,6 +611,196 @@ function showServerStatus(message, type) {
 		setTimeout(() => { el.serverStatus.hidden = true; }, 5000);
 	}
 }
+
+// ── Settings: Company sign-in ("Mit Firmenkonto anmelden") ──
+// GateControl ≥ 1.201.0: for the address in "Server-URL" the app asks the
+// server which sign-in methods it offers. Older servers (404) or no answer →
+// the card stays hidden. Password and Microsoft sign-in end with a setup code
+// that the main process redeems through the normal setup-code path; the page
+// never sees the code.
+const SIGNIN_LOOKUP_DELAY_MS = 500;
+let signinOffer = null; // { url, methods }
+let signinLookupUrl = '';
+let signinLookupId = 0;
+let signinLookupTimer = null;
+let signinBusy = null; // null | 'password' | 'browser'
+
+function signinServerUrl() {
+	const url = el.serverUrl.value.trim();
+	if (!url) return '';
+	return /^https?:\/\//i.test(url) ? url : `https://${url}`;
+}
+
+function signinHost(url) {
+	try { return new URL(url).host; } catch { return url; }
+}
+
+/** keep: do not ask again when the address did not change (opening Settings). */
+function lookupSignin({ keep = false } = {}) {
+	const url = signinServerUrl();
+	if (keep && url === signinLookupUrl) return;
+	if (signinBusy) return;
+	clearTimeout(signinLookupTimer);
+	const id = ++signinLookupId;
+	signinLookupUrl = url;
+	signinOffer = null;
+	$('#signin-card').hidden = true;
+	if (!url || !signinApi) return;
+	signinLookupTimer = setTimeout(async () => {
+		let methods = null;
+		try { methods = await signinApi.methods(url); } catch { methods = null; }
+		if (id !== signinLookupId) return; // the address changed meanwhile
+		if (methods && methods.available) {
+			signinOffer = { url, methods };
+			renderSignin();
+		}
+	}, keep ? 0 : SIGNIN_LOOKUP_DELAY_MS);
+}
+
+function cancelSignin() {
+	if (signinBusy === 'browser' && signinApi) signinApi.cancel().catch(() => {});
+}
+
+function renderSignin() {
+	const card = $('#signin-card');
+	if (!signinOffer || policyState.locks?.server) {
+		card.hidden = true;
+		return;
+	}
+	const { url, methods } = signinOffer;
+	$('#signin-host').textContent = signinHost(url);
+
+	const ms = $('#signin-ms');
+	ms.textContent = '';
+	methods.microsoft.forEach((m) => {
+		const btn = document.createElement('button');
+		btn.type = 'button';
+		btn.className = 'btn btn-sec';
+		btn.dataset.id = String(m.id);
+		const label = document.createElement('span');
+		label.dataset.i18n = 'ui.signin.microsoft';
+		label.textContent = t('ui.signin.microsoft');
+		btn.appendChild(label);
+		if (m.label) {
+			const sub = document.createElement('span');
+			sub.className = 'muted';
+			sub.textContent = `· ${m.label}`;
+			btn.appendChild(sub);
+		}
+		btn.addEventListener('click', () => signinMicrosoft(m.id));
+		ms.appendChild(btn);
+	});
+	ms.hidden = methods.microsoft.length === 0;
+
+	const pw = methods.password.enabled;
+	$('#signin-user-field').hidden = !pw;
+	$('#signin-pass-field').hidden = !pw;
+	$('#btn-signin').hidden = !pw;
+	const hint = $('#signin-hint');
+	hint.textContent = methods.password.hint || '';
+	hint.hidden = !methods.password.hint;
+	$('#signin-totp-field').hidden = true;
+	$('#signin-totp').value = '';
+	$('#signin-status').hidden = true;
+	card.hidden = false;
+	setSigninBusy(null);
+}
+
+function updateSigninSubmit() {
+	const totpOn = !$('#signin-totp-field').hidden;
+	const ok = $('#signin-user').value.trim() && $('#signin-pass').value
+		&& (!totpOn || /^\d{6}$/.test($('#signin-totp').value.replace(/\s/g, '')));
+	$('#btn-signin').disabled = !!signinBusy || !ok;
+}
+
+function setSigninBusy(mode) {
+	signinBusy = mode;
+	$$('#signin-ms .btn').forEach((b) => { b.disabled = !!mode; });
+	['#signin-user', '#signin-pass', '#signin-totp'].forEach((sel) => { $(sel).disabled = !!mode; });
+	$('#btn-signin-cancel').hidden = mode !== 'browser';
+	updateSigninSubmit();
+}
+
+function showSigninStatus(message, type) {
+	const status = $('#signin-status');
+	status.hidden = false;
+	status.textContent = message;
+	status.className = `field-status ${type}`;
+}
+
+function signinDone(result) {
+	if (result.success) {
+		const url = signinOffer.url;
+		el.serverUrl.value = url;
+		el.apiKey.value = '';
+		view.serverUrl = url;
+		renderOverviewHeader();
+		updateSideSub();
+		$('#signin-pass').value = '';
+		$('#signin-totp').value = '';
+		$('#signin-totp-field').hidden = true;
+		updateSigninSubmit();
+		showSigninStatus(t('server.enrolled', { peerId: result.peerId }), 'success');
+		return;
+	}
+	if (result.cancelled) {
+		$('#signin-status').hidden = true;
+		return;
+	}
+	if (result.totpRequired) {
+		const field = $('#signin-totp-field');
+		const first = field.hidden;
+		field.hidden = false;
+		$('#signin-totp').value = '';
+		updateSigninSubmit();
+		$('#signin-totp').focus();
+		showSigninStatus(result.error, first && result.code === 'totp_required' ? 'info' : 'error');
+		return;
+	}
+	showSigninStatus(result.error || t('server.signin.failedCode', { error: 'unknown' }), 'error');
+}
+
+async function signinPassword() {
+	if (signinBusy || !signinOffer || $('#btn-signin').disabled) return;
+	const totpOn = !$('#signin-totp-field').hidden;
+	showSigninStatus(t('ui.signin.running'), 'info');
+	setSigninBusy('password');
+	let result;
+	try {
+		result = await signinApi.password({
+			url: signinOffer.url,
+			username: $('#signin-user').value.trim(),
+			password: $('#signin-pass').value,
+			totp: totpOn ? $('#signin-totp').value.replace(/\s/g, '') : undefined,
+		});
+	} catch (err) {
+		result = { success: false, error: err.message };
+	}
+	setSigninBusy(null);
+	signinDone(result);
+}
+
+async function signinMicrosoft(id) {
+	if (signinBusy || !signinOffer) return;
+	showSigninStatus(t('ui.signin.browser'), 'info');
+	setSigninBusy('browser');
+	let result;
+	try {
+		result = await signinApi.microsoft({ url: signinOffer.url, id });
+	} catch (err) {
+		result = { success: false, error: err.message };
+	}
+	setSigninBusy(null);
+	signinDone(result);
+}
+
+el.serverUrl.addEventListener('input', () => lookupSignin());
+$('#btn-signin').addEventListener('click', signinPassword);
+$('#btn-signin-cancel').addEventListener('click', cancelSignin);
+['#signin-user', '#signin-pass', '#signin-totp'].forEach((sel) => {
+	$(sel).addEventListener('input', updateSigninSubmit);
+	$(sel).addEventListener('keydown', (e) => { if (e.key === 'Enter') signinPassword(); });
+});
 
 // ── Settings: Config Import ──────────────────────────────
 $('#btn-import-file').addEventListener('click', async () => {
@@ -1584,6 +1777,8 @@ function applyPolicyUi() {
 	const importCard = $('#btn-import-file')?.closest('section');
 	if (serverCard) serverCard.hidden = !!l.server;
 	if (importCard) importCard.hidden = !!l.server;
+	if (l.server) cancelSignin();
+	$('#signin-card').hidden = !!l.server || !signinOffer;
 	const serverHint = $('#policy-server-hint');
 	if (serverHint) {
 		serverHint.hidden = !l.server;

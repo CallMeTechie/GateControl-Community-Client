@@ -170,6 +170,18 @@
       "quietNoPortal": "The portal is available once the VPN is connected.",
       "killSwitchNote": "Kill switch note",
       "saveFailed": "Setting could not be saved: {{ error }}"
+    },
+    "signin": {
+      "title": "Sign in with company account",
+      "desc": "Instead of a setup code: with your account on",
+      "microsoft": "Sign in with Microsoft",
+      "user": "Email or username",
+      "password": "Password",
+      "totp": "Verification code",
+      "totpHint": "6 digits from your authenticator app",
+      "submit": "Sign in",
+      "running": "Signing in …",
+      "browser": "Please sign in in your browser. The app continues on its own afterwards."
     }
   },
   "vault": {

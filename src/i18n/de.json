@@ -170,6 +170,18 @@
       "quietNoPortal": "Das Portal ist erreichbar, sobald das VPN verbunden ist.",
       "killSwitchNote": "Hinweis zum Kill-Switch",
       "saveFailed": "Einstellung konnte nicht gespeichert werden: {{ error }}"
+    },
+    "signin": {
+      "title": "Mit Firmenkonto anmelden",
+      "desc": "Statt mit einem Einrichtungscode: mit deinem Konto bei",
+      "microsoft": "Mit Microsoft anmelden",
+      "user": "E-Mail oder Benutzername",
+      "password": "Passwort",
+      "totp": "Bestätigungscode",
+      "totpHint": "6 Ziffern aus deiner Authenticator-App",
+      "submit": "Anmelden",
+      "running": "Anmeldung läuft …",
+      "browser": "Bitte melde dich im Browser an. Danach geht es hier von selbst weiter."
     }
   },
   "vault": {
