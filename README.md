@@ -249,6 +249,7 @@ Der Client hat kein Authenticode-Zertifikat. Auto-Updates sind deshalb mit einem
 
 - Die Release-Pipeline (`scripts/sign-update.js`) schreibt zu jedem Release `update-manifest.json` (Produkt, Version, Dateiname, SHA-256 und Größe des Installers) und die Signatur `update-manifest.json.sig` und lädt beide als Release-Assets hoch. Der private Schlüssel liegt ausschließlich im GitHub-Secret `UPDATE_SIGNING_KEY`.
 - Der Client installiert nur Updates, deren Manifest mit dem Public Key aus `build/update-signing.pub` gültig signiert ist und deren Download Größe und SHA-256 aus dem Manifest trifft. Unsignierte Updates werden abgelehnt.
+- **Update aus dem Heimnetz:** Hält ein Home-Gateway im selben LAN genau diesen Installer vor, nennt der Server beim Update-Check zusätzlich dessen Adresse. Der Client lädt den Installer dann zuerst von dort – nur mit Zertifikats-Pin und nur, wenn Größe und SHA-256 zum signierten Manifest passen. Bei jedem Fehler lädt er wie bisher vom normalen Download.
 - Solange `build/update-signing.pub` den Platzhalter `REPLACE_WITH_UPDATE_PUBLIC_KEY` enthält, ist der Auto-Updater im Client deaktiviert und die Release-Pipeline bricht ab.
 
 **Einmalig einrichten** (lokal, der private Schlüssel verlässt den Rechner nur als Secret):
