@@ -469,13 +469,15 @@ async function connectTunnel() {
 			log.debug('Hostname report skipped:', err.message);
 		}
 
-		// Install NRPT rule for *.<domain> (peer hostnames) so Windows routes
-		// those queries to the VPN-internal dnsmasq instead of the default
-		// resolver fan-out (which caches a public-side NXDOMAIN first).
+		// Install the NRPT rules for *.<zone> (peer hostnames, one rule per zone
+		// the server answers) so Windows routes those queries to the VPN-internal
+		// dnsmasq instead of the default resolver fan-out (which caches a
+		// public-side NXDOMAIN first). force: also replaces rules a killed
+		// process left behind.
 		try {
 			if (DnsPolicy && !dnsPolicy) dnsPolicy = new DnsPolicy(log);
 			if (dnsPolicy) {
-				installPeerDnsRule().catch((e) =>
+				syncPeerDnsRules({ force: true }).catch((e) =>
 					log.debug('NRPT install failed:', e && e.message));
 			}
 		} catch (err) {
@@ -492,22 +494,25 @@ async function connectTunnel() {
 	}
 }
 
-// Internal DNS as the server reported it with the config: { domain, server },
-// null (off), or unset for servers that do not say — kept for connects
-// where the config cannot be fetched.
+// Internal DNS as the server reported it with the config or the config check:
+// { domain, server, domains, primary }, null (off), or unset for servers that
+// do not say — kept for connects where the config cannot be fetched.
 function rememberInternalDns() {
 	if (apiClient && apiClient.internalDns !== undefined) store.set('tunnel.internalDns', apiClient.internalDns);
 	else store.delete('tunnel.internalDns');
 }
 
-// Peer hostnames (<host>.<domain>) → the server's dnsmasq, with the domain and
-// resolver of this server (client-core DnsPolicy.ruleFor), not fixed values.
-async function installPeerDnsRule() {
-	const rule = DnsPolicy.ruleFor({
+// Peer hostnames (<host>.<zone>) → the server's dnsmasq, with the zones and
+// resolver of this server (client-core DnsPolicy.rulesFor), not fixed values:
+// one rule per zone, own rules for zones no longer listed are removed.
+async function syncPeerDnsRules({ force = false } = {}) {
+	const rules = DnsPolicy.rulesFor({
 		internalDns: store.get('tunnel.internalDns'),
 		wgConfig: await wgService.readConfig(WG_CONFIG_FILE),
 	});
-	if (rule) await dnsPolicy.add(rule.namespace, rule.nameServer);
+	// The tunnel may have gone down while the config was read.
+	if (!tunnelState.connected) return;
+	await dnsPolicy.sync(rules, { force });
 }
 
 async function disconnectTunnel() {
@@ -837,7 +842,13 @@ function checkConfigNow() {
 	configCheck = (async () => {
 		try {
 			const newConfig = await apiClient.checkConfigUpdate();
-			if (!newConfig) return;
+			// The zones for device names come with every answer, also without a new
+			// config (the admin can change them, the config hash stays the same).
+			if (apiClient.internalDns !== undefined) rememberInternalDns();
+			if (!newConfig) {
+				if (dnsPolicy && tunnelState.connected) await syncPeerDnsRules();
+				return;
+			}
 			// Validate before applying — fail-closed via shared validator.
 			const validation = validateWgConfig(newConfig);
 			if (!validation.ok) {
