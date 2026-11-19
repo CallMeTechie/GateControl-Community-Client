@@ -27,6 +27,11 @@
  * and app/timetable, app/changes (and with plugin 1.4.0 app/messages,
  * app/absences) answer from the test's data.
  *
+ * DNS-Schutz: without `server.setDns()` the permissions answer has no
+ * `vpnDns` (a server before 1.264.0). With it (support/dns-mock.js) the
+ * answer names the plugin and the filter's state (or `null`), and status,
+ * pause and resume of that plugin answer from the test's data.
+ *
  * Map ("Standort senden"): /osm/<z>/<x>/<y>.png answers a PNG tile and
  * /nominatim/search, /nominatim/reverse canned addresses (`setGeocode()`)
  * — the app's MapService points there in e2e mode (GC_E2E_MAP_URL).
@@ -47,6 +52,7 @@ const { createMessenger } = require('./messenger-mock');
 const { createSchool } = require('./school-mock');
 const { createVault } = require('./vault-mock');
 const { createSignin } = require('./signin-mock');
+const { createDns } = require('./dns-mock');
 
 const API_TOKEN = 'gc_e2e_test_token';
 // 1 × 1 PNG, served for every map tile
@@ -110,6 +116,7 @@ async function startMockServer() {
   let messenger = null; // support/messenger-mock.js, null = no Messenger plugin
   let school = null; // support/school-mock.js, null = no Schule plugin
   let vault = null; // support/vault-mock.js, null = no Vault plugin
+  let dns = null; // support/dns-mock.js, null = a server before the DNS protection (permissions without `vpnDns`)
   let signin = null; // support/signin-mock.js, null = server before company sign-in (404)
   const acks = [];
   const prefs = [];
@@ -235,6 +242,9 @@ async function startMockServer() {
       }
       if (req.headers['x-api-token'] !== API_TOKEN) return json(401, { ok: false, error: 'unauthorized' });
 
+      // DNS protection of the VPN devices: the plugin's app API (status, pause, resume).
+      if (dns && dns.handle({ method: req.method, route, raw, query: Object.fromEntries(url.searchParams) }, json)) return undefined;
+
       if (vault) {
         // The plugin list names the other plugins too when they are set.
         if (route === 'plugins') {
@@ -270,7 +280,7 @@ async function startMockServer() {
         case 'config/check': return json(200, { ok: true, changed: false });
         case 'heartbeat': return json(200, { ok: true });
         case 'status': return json(200, { ok: true });
-        case 'permissions': return json(200, { ok: true, permissions: {}, portalUrl: null, autoOpenPortal: false });
+        case 'permissions': return json(200, { ok: true, permissions: {}, portalUrl: null, autoOpenPortal: false, ...(dns ? { vpnDns: dns.vpnDns() } : {}) });
         case 'services': return json(200, { ok: true, services: [] });
         case 'policy':
           if (!policy) return json(404, { ok: false });
@@ -327,6 +337,11 @@ async function startMockServer() {
     setSchool(opts = {}) {
       school = createSchool(opts);
       return school;
+    },
+    /** A server with the DNS protection of the VPN devices (support/dns-mock.js); returns its state. */
+    setDns(opts = {}) {
+      dns = createDns(opts);
+      return dns;
     },
     /** Enables the Vault plugin (support/vault-mock.js, the core's fake server); returns its state. */
     setVault(opts = {}) {

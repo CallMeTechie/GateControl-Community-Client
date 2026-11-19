@@ -13,6 +13,7 @@ Electron-basierter WireGuard VPN-Client mit nativer WireGuard-Integration (FFI),
 | **Kill-Switch** | Blockiert allen Traffic außerhalb des VPN-Tunnels (Windows Firewall) |
 | **Erreichbare Dienste** | Zeigt alle Server-Routen als klickbare Liste nach Verbindungsaufbau |
 | **DNS-Leak-Test** | Prüft ob DNS-Anfragen durch den VPN-Tunnel gehen |
+| **DNS-Schutz** | Karte auf „Übersicht“ und Einträge im Tray-Menü, wenn der Server den DNS-Schutz (Plugin `gatecontrol-dns`) meldet: Zustand, Zähler, Top gesperrte Domains, Unterbrechen für dieses Gerät (5 Min. / 30 Min. / 1 Std. …, „+30 Min.“, „Wieder einschalten“ – was der Server erlaubt), „Internet pausiert“ (Familie), Hinweis bei Ausfall des Filters |
 | **Peer-Ablauf-Warnung** | Benachrichtigung 7/3/1 Tag vor Ablauf des VPN-Zugangs |
 | **Traffic-Verbrauch** | Datenverbrauch (24h, 7 Tage, 30 Tage, Gesamt) vom Server |
 | **Bandbreiten-Graph** | Live-Canvas-Graph mit aktueller Download-/Upload-Geschwindigkeit |
@@ -230,6 +231,9 @@ Alle Regeln tragen den Prefix `GateControl_Community_KS_` (der Pro Client nutzt 
 | Getrennt | Grau | Kein aktiver Tunnel |
 | Verbinde | Gelb | Tunnel wird aufgebaut / Reconnect |
 | Verbunden | Grün | Tunnel aktiv, Handshake OK |
+
+Meldet der Server den DNS-Schutz, zeigt das Menü zusätzlich „DNS-Schutz: aktiv“ (bzw. „unterbrochen bis …“,
+„ausgefallen“) und – wenn erlaubt – „DNS-Schutz unterbrechen ▸“ oder „DNS-Schutz wieder einschalten“.
 
 ## Technologie-Stack
 

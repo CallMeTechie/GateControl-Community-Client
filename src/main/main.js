@@ -72,6 +72,9 @@ const { setupVaultQuick } = require('./vault-quick');
 // GateDrop (plugin gatecontrol-gatedrop): send / receive files, LAN listener,
 // "Senden an" in the Explorer (core services/gatedrop.js).
 const { GateDropService, GateDropFirewall, gatedropShell } = require('@gatecontrol/client-core');
+// DNS-Schutz (plugin gatecontrol-dns): the DNS filter of the VPN devices — the card on "Übersicht" and the
+// tray entries (core services/dns-protect.js, utils/dns-protect.js).
+const { DnsProtectService, dnsProtectUtil } = require('@gatecontrol/client-core');
 const { setupGateDrop } = require('./gatedrop');
 const { shortDeviceId, withDeviceId } = require('./device-id');
 const { setupNotifications } = require('./notifications');
@@ -127,6 +130,8 @@ let school = null; // Schule (core SchoolService), one per app lifetime
 let vault = null; // Vault (core VaultService), one per app lifetime
 let vaultQuick = null; // Vault quick search window (./vault-quick.js)
 let gatedrop = null; // GateDrop (./gatedrop.js), one per app lifetime
+let dnsProtect = null; // DNS-Schutz (core DnsProtectService), one per app lifetime
+let dnsProtectTray = '[]'; // what the tray entries of DNS-Schutz last showed
 let configPollTimer = null; // config/check poll (see scheduleConfigPoll)
 let configCheck = null; // running config check (shared by poll and push)
 let trayState = 'disconnected'; // last state drawn in the tray (refresh on unread / DND changes)
@@ -213,6 +218,16 @@ function updateTray(state) {
 	if (chatLine) tooltip += `\n${chatLine}`;
 	tray.setToolTip(tooltip);
 
+	// "DNS-Schutz: aktiv" with "DNS-Schutz unterbrechen" ▸ durations, or "… wieder einschalten" (core
+	// dnsProtectMenuItems); nothing while the server reports no DNS protection
+	const dnsItems = dnsProtect && dnsProtectUtil ? dnsProtectUtil.dnsProtectMenuItems({
+		snapshot: dnsProtect.snapshot(),
+		t,
+		locale: getLocale(),
+		pause: (how) => changeDnsProtect(() => dnsProtect.pause(how)),
+		resume: () => changeDnsProtect(() => dnsProtect.resume()),
+	}) : [];
+
 	// "Mitteilungen · n neu" and "Nicht stören für 1 Stunde" (core notifyMenuItems)
 	const notifyItems = [
 		...(chats ? chats.menuItems(t, () => { showWindow(); mainWindow?.webContents.send('navigate', 'chats'); }) : []),
@@ -256,6 +271,7 @@ function updateTray(state) {
 			enabled: !(state === 'connected' && policyLocks().disconnect),
 			click: () => state === 'connected' ? disconnectTunnel() : connectTunnel(),
 		},
+		...(dnsItems.length ? [{ type: 'separator' }, ...dnsItems] : []),
 		{ type: 'separator' },
 		{
 			label: policyLocks().killSwitch ? `${t('killswitch.label')} (${t('policy.lockedHint')})` : t('killswitch.label'),
@@ -432,6 +448,8 @@ async function connectTunnel() {
 
 		updateTray('connected');
 		broadcastState('connected');
+		// DNS-Schutz: with the tunnel up the server may be reachable (again) — ask now, not at the next interval
+		dnsProtect?.refresh().catch(() => {});
 
 		// ── Portal auto-open (Task 7) ────────────────────────────
 		async function refreshPortalUrl() {
@@ -690,6 +708,17 @@ function showNotification(title, body, { priority = 'normal', collapseKey = null
 		return null;
 	}
 	return notifications.notify({ title: `GateControl: ${title}`, body, priority, collapseKey, force, onClick, actions });
+}
+
+// Tray: pause / resume the DNS protection. No window shows the result: the tray entry changes on success
+// ('change' → updateTray), a refusal becomes a notification with the server's sentence.
+function changeDnsProtect(run) {
+	Promise.resolve().then(run).catch((err) => {
+		log.warn(`DNS-Schutz: ${err.code || err.message}`);
+		const refused = err.status >= 400 && err.status < 500 && /\s/.test(String(err.message));
+		const error = refused ? err.message : t(err.code === 'network' || err.code === 'timeout' ? `dnsProtect.error.${err.code}` : 'dnsProtect.error.unavailable');
+		notifications?.notify({ title: 'GateControl', body: t('dnsProtect.toast.failed', { error }), collapseKey: 'dns-protect', force: true });
+	});
 }
 
 // ── Peer-Ablauf-Warnung ─────────────────────────────────
@@ -993,6 +1022,29 @@ async function initServices() {
 		onChange: () => updateTray(trayState),
 	}) : null;
 
+	// DNS-Schutz: the card and the tray entries exist only while the server reports a DNS protection. The tray
+	// follows what its entries show (not every answer: an open menu is left alone); a filter that fails is
+	// announced here (the plugin tells only admins).
+	dnsProtect = DnsProtectService ? new DnsProtectService({
+		apiClient, log,
+		pushClient: notifications?.pushClient,
+		getLocale: () => getLocale(),
+	}) : null;
+	if (dnsProtect) {
+		dnsProtect.on('change', (snapshot) => {
+			const key = JSON.stringify(dnsProtectUtil.dnsProtectMenuItems({ snapshot, t, locale: getLocale(), pause() {}, resume() {} }));
+			if (key === dnsProtectTray) return;
+			dnsProtectTray = key;
+			updateTray(trayState);
+		});
+		dnsProtect.on('outage', () => notifications?.notify({
+			title: t('dnsProtect.toast.outageTitle'),
+			body: t('dnsProtect.toast.outageBody'),
+			collapseKey: 'dns-protect',
+			onClick: () => { showWindow(); mainWindow?.webContents.send('navigate', 'status'); },
+		}));
+	}
+
 	// Last known policy first (works offline)
 	await applyClientPolicy({ startup: true });
 
@@ -1128,6 +1180,8 @@ app.whenReady().then(async () => {
 		// gatedrop:* channels + events, reset on server:setup (core, opt-in)
 		gatedrop: gatedrop?.service,
 		gatedropExplorer: gatedrop?.explorer,
+		// dnsprotect:* channels + event, reset on server:setup (core, opt-in)
+		dnsProtect,
 		// Result of a bundle the admin requested (the button shows its own status).
 		onSupportResult: (res) => {
 			if (!res || res.cancelled) return;
@@ -1185,6 +1239,8 @@ app.whenReady().then(async () => {
 	// GateDrop: availability, presence, LAN listener; started by
 	// "Senden an → GateDrop" → the send dialog opens once the window is ready.
 	gatedrop?.start();
+	// DNS-Schutz: does the server report one? Its state for the card and the tray.
+	dnsProtect?.start();
 	if (gatedrop?.handleArgv(process.argv)) log.info('Started from "Senden an → GateDrop"');
 
 	// Ask the server for the current client policy (also polled, and on
@@ -1276,6 +1332,7 @@ async function quitApp() {
 	vault?.stop();
 	// GateDrop: LAN listener and timers.
 	gatedrop?.stop();
+	dnsProtect?.stop();
 
 	if (tunnelState.connected) {
 		await disconnectTunnel();
@@ -1313,4 +1370,5 @@ app.on('before-quit', async () => {
 	vault?.lock('quit');
 	vault?.stop();
 	gatedrop?.stop();
+	dnsProtect?.stop();
 });

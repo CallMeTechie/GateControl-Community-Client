@@ -185,6 +185,8 @@ let chatView = null; // chat-view.js instance (CHATS section below)
 let schoolView = null; // school-view.js instance (SCHULE section below)
 let gatedropView = null; // gatedrop-view.js instance (GATEDROP section below)
 let vaultView = null; // vault-view.js instance (VAULT section below)
+let dnsView = null; // dns-view.js instance: the card "DNS-Schutz" on "Übersicht" (DNS-SCHUTZ section below)
+let dnsConn = null; // the tunnel state the card was last told
 let notifyRoutesView = null; // notify-routes.js in Settings › Benachrichtigungen
 
 function navigateTo(page) {
@@ -204,6 +206,9 @@ function navigateTo(page) {
 	// Logs laden wenn Tab gewechselt
 	if (page === 'logs') refreshLogs();
 	if (page === 'status') redrawBandwidthGraph();
+	// DNS-Schutz: the status is asked more often while the card is on screen
+	if (page === 'status' && prev !== 'status') dnsView?.show();
+	else if (prev === 'status' && page !== 'status') dnsView?.hide();
 	if (page === 'inbox') renderInbox();
 	// Chats: "active" / read marks only while the page is shown
 	if (page === 'chats' && prev !== 'chats') chatView?.show();
@@ -277,6 +282,7 @@ function updateDOM() {
 	schoolView?.relabel();
 	gatedropView?.relabel();
 	vaultView?.relabel();
+	dnsView?.relabel();
 	notifyRoutesView?.render();
 }
 
@@ -352,6 +358,9 @@ function updateUI() {
 	const ui = uiState();
 	const connected = ui === 'on';
 	const host = hostOf(view.serverUrl) || hostOf(endpoint) || '';
+
+	// DNS-Schutz: the card notes that only a connected device is filtered
+	if (dnsConn !== connected) { dnsConn = connected; dnsView?.connection(); }
 
 	// Hero
 	el.hero.dataset.state = ui;
@@ -2573,6 +2582,25 @@ vaultView = vaultApi && window.GCVaultView && $('#page-vault')
 		},
 	})
 	: null;
+
+// ══════════════════════════════════════════════════════════
+//  DNS-SCHUTZ (the DNS filter of the VPN devices, plugin gatecontrol-dns)
+//  Data: window.gatecontrol.dnsProtect (core DnsProtectService in main); the
+//  card on "Übersicht" is built by dns-view.js (window.GCDnsView) with
+//  dns-state.js. It is shown only while the server reports a DNS protection
+//  (`vpnDns` of GET permissions); the tray entries come from main.
+// ══════════════════════════════════════════════════════════
+dnsView = window.gatecontrol.dnsProtect && window.GCDnsView && $('#dns-protect') && $('#dns-protect-top')
+	? window.GCDnsView.mount({
+		host: $('#dns-protect'),
+		topHost: $('#dns-protect-top'),
+		api: window.gatecontrol.dnsProtect,
+		t,
+		getLocale: () => window.gatecontrol.i18n.getLocale(),
+		isConnected: () => isConnected(),
+	})
+	: null;
+if (dnsView && currentPage !== 'status') dnsView.hide();
 
 clientPolicy.onChange((st) => { onPolicyState(st); });
 clientPolicy.get().then((st) => onPolicyState(st)).catch(() => {});

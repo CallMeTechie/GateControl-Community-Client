@@ -16,10 +16,11 @@ registerTranslations('en', require('../i18n/en.json'));
 const api = createBridgeApi(ipcRenderer, i18n, { updateReadyChannel: 'update-ready', webUtils });
 
 // Der Core bringt die Brücke für alle Funktionen mit. Drive, Mail, Notizen,
-// Kameras, Familie, Drucken und DNS-Schutz gibt es in der Community-App nicht:
-// main.js übergibt diese Dienste nicht an registerBaseHandlers, also bedient
-// niemand ihre Kanäle – der Renderer bekommt sie gar nicht erst.
-for (const key of ['drive', 'mail', 'notes', 'cameras', 'familie', 'print', 'dnsProtect']) delete api[key];
+// Kameras, Familie, Drucken und „Meine Orte“ gibt es in der Community-App nicht: main.js
+// übergibt diese Dienste nicht an registerBaseHandlers, also bedient niemand
+// ihre Kanäle – der Renderer bekommt sie gar nicht erst. (DNS-Schutz gibt es:
+// die Karte auf „Übersicht“ und die Tray-Einträge.)
+for (const key of ['drive', 'mail', 'notes', 'cameras', 'familie', 'print', 'places']) delete api[key];
 
 // Kurze Geräte-ID (erste 8 Hex des Machine-Fingerprints) oder null.
 api.getDeviceId = () => ipcRenderer.invoke('app:device-id');
