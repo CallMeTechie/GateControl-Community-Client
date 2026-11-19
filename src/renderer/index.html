@@ -11,6 +11,7 @@
 	<link rel="stylesheet" href="styles/school.css">
 	<link rel="stylesheet" href="styles/gatedrop.css">
 	<link rel="stylesheet" href="styles/vault.css">
+	<link rel="stylesheet" href="styles/dns.css">
 </head>
 <body>
 <div class="gc" id="app-root">
@@ -194,6 +195,10 @@
 								</div>
 							</div>
 						</section>
+
+						<!-- DNS-Schutz: the DNS filter of the VPN devices (plugin gatecontrol-dns, dns-view.js); hidden unless the server reports it -->
+						<section class="card dnsp" id="dns-protect" aria-label="DNS-Schutz" data-i18n-aria="dnsProtect.title" hidden></section>
+						<section class="card dnsp-top" id="dns-protect-top" aria-label="Top gesperrte Domains" data-i18n-aria="dnsProtect.top.title" hidden></section>
 
 						<!-- Durchsatz -->
 						<section class="card throughput" id="bandwidth-section">
@@ -720,6 +725,8 @@
 <script src="gatedrop-view.js"></script>
 <script src="vault-state.js"></script>
 <script src="vault-view.js"></script>
+<script src="dns-state.js"></script>
+<script src="dns-view.js"></script>
 <script src="renderer.js"></script>
 </body>
 </html>

@@ -1,0 +1,58 @@
+/* ══════════════════════════════════════════════════════════
+   GateControl – DNS-Schutz (the DNS filter of the VPN devices)
+   The card on "Übersicht" and "Top gesperrte Domains" next to it
+   (dns-view.js); uses the app's design tokens (--panel, --panel2, --line,
+   --acc, --warn, --err, …) and the cards, chips, buttons, notices and
+   inline status of app.css.
+   ══════════════════════════════════════════════════════════ */
+
+.gc .dnsp { grid-column: span 2; padding: 20px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.gc .dnsp.is-wide { grid-column: 1 / -1; }
+.gc .dnsp[hidden], .gc .dnsp-top[hidden] { display: none; }
+.gc .dnsp[data-tone="warn"] { border-color: var(--warn); }
+.gc .dnsp[data-tone="err"] { border-color: var(--err); }
+
+.gc .dnsp-desc { font-size: 13px; color: var(--muted); }
+.gc .dnsp-head { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.gc .dnsp-ic { width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: var(--panel2); color: var(--faint); }
+.gc .dnsp-ic.c-ok { background: var(--acc-bg); color: var(--acc-t); }
+.gc .dnsp-ic.c-warn { background: var(--warn-bg); color: var(--warn); }
+.gc .dnsp-ic.c-err { background: var(--err-bg); color: var(--err); }
+.gc .dnsp-t { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.gc .dnsp-t .card-title { margin: 0; }
+.gc .dnsp-t .dnsp-desc { overflow-wrap: anywhere; }
+.gc .dnsp-head .chip { flex-shrink: 0; align-self: flex-start; }
+
+.gc .dnsp-ban { align-items: flex-start; font-size: 13px; line-height: 1.45; }
+.gc .dnsp-ban-ic { flex-shrink: 0; display: inline-flex; padding-top: 1px; }
+.gc .dnsp-ban-ic.t-err { color: var(--err); }
+.gc .dnsp-ban-ic.t-warn { color: var(--warn); }
+.gc .dnsp-ban-ic.t-info { color: var(--info); }
+
+.gc .dnsp-kv { margin: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.gc .dnsp-kv > div { padding: 10px 12px; border-radius: 10px; background: var(--panel2); min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.gc .dnsp-kv dt { font-size: 12px; }
+.gc .dnsp-kv dd { margin: 0; font-size: 20px; font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; }
+
+.gc .dnsp-btns { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.gc .dnsp-lead { flex: 1 1 100%; }
+.gc .dnsp-btns .btn { gap: 6px; }
+.gc .dnsp-cd { display: inline-flex; align-items: center; height: 30px; padding: 0 12px; border-radius: var(--r-ctl); font-size: 13px; font-weight: 500; background: var(--acc-bg); color: var(--acc-t); box-shadow: inset 0 0 0 1px var(--acc-t); font-variant-numeric: tabular-nums; }
+.gc .dnsp .chip .mono { font-variant-numeric: tabular-nums; }
+.gc .dnsp-note { margin: 0; line-height: 1.45; }
+
+.gc .dnsp-top { padding: 20px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.gc .dnsp-top .card-title, .gc .dnsp-top p { margin: 0; }
+.gc .dnsp-top-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.gc .dnsp-top-list li { display: flex; align-items: baseline; gap: 12px; padding: 8px 0; font-size: 13px; border-top: 1px solid var(--line); }
+.gc .dnsp-top-list li:first-child { border-top: 0; padding-top: 2px; }
+.gc .dnsp-dom { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gc .dnsp-cnt { flex-shrink: 0; color: var(--muted); }
+
+@container main (max-width: 1019px) {
+	/* two columns: "Top gesperrte Domains" next to "Schutz", the card below them in full width */
+	.gc .dnsp { grid-column: 1 / -1; order: 1; }
+}
+@container main (max-width: 639px) {
+	.gc .dnsp-kv { grid-template-columns: minmax(0, 1fr); }
+}

@@ -233,6 +233,9 @@ function install({ app, env }) {
   // the event Electron emits for a click on the toast.
   const { Notification } = require('electron');
   const realShow = Notification.prototype.show;
+  // Linux runs (xvfb, no notification daemon): Electron says "not supported" and no toast is ever made — as on
+  // Windows they are made and recorded (show() of Electron then does nothing)
+  if (process.platform === 'linux' && typeof Notification.isSupported === 'function' && !Notification.isSupported()) Notification.isSupported = () => true;
   state.toasts = [];
   Notification.prototype.show = function e2eShow(...args) {
     const text = `${this.title || ''}\n${this.body || ''}\n${this.toastXml || ''}`;
