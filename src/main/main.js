@@ -75,6 +75,8 @@ const { GateDropService, GateDropFirewall, gatedropShell } = require('@gatecontr
 // DNS-Schutz (plugin gatecontrol-dns): the DNS filter of the VPN devices — the card on "Übersicht" and the
 // tray entries (core services/dns-protect.js, utils/dns-protect.js).
 const { DnsProtectService, dnsProtectUtil } = require('@gatecontrol/client-core');
+// the plugins' quick actions (core ≥ client-core#138): the core preload offers quickactions:* — served here
+const { QuickActionsService } = require('@gatecontrol/client-core');
 const { setupGateDrop } = require('./gatedrop');
 const { shortDeviceId, withDeviceId } = require('./device-id');
 const { setupNotifications } = require('./notifications');
@@ -131,6 +133,7 @@ let vault = null; // Vault (core VaultService), one per app lifetime
 let vaultQuick = null; // Vault quick search window (./vault-quick.js)
 let gatedrop = null; // GateDrop (./gatedrop.js), one per app lifetime
 let dnsProtect = null; // DNS-Schutz (core DnsProtectService), one per app lifetime
+let quickActions = null; // the plugins' quick actions (core QuickActionsService), one per app lifetime
 let dnsProtectTray = '[]'; // what the tray entries of DNS-Schutz last showed
 let configPollTimer = null; // config/check poll (see scheduleConfigPoll)
 let configCheck = null; // running config check (shared by poll and push)
@@ -1025,6 +1028,7 @@ async function initServices() {
 	// DNS-Schutz: the card and the tray entries exist only while the server reports a DNS protection. The tray
 	// follows what its entries show (not every answer: an open menu is left alone); a filter that fails is
 	// announced here (the plugin tells only admins).
+	quickActions = QuickActionsService ? new QuickActionsService({ apiClient, log, getLocale: () => getLocale() }) : null;
 	dnsProtect = DnsProtectService ? new DnsProtectService({
 		apiClient, log,
 		pushClient: notifications?.pushClient,
@@ -1182,6 +1186,8 @@ app.whenReady().then(async () => {
 		gatedropExplorer: gatedrop?.explorer,
 		// dnsprotect:* channels + event, reset on server:setup (core, opt-in)
 		dnsProtect,
+		// quickactions:* channels (Schnellaktionen der Plugins), reset on server:setup (core, opt-in)
+		quickActions,
 		// Result of a bundle the admin requested (the button shows its own status).
 		onSupportResult: (res) => {
 			if (!res || res.cancelled) return;
