@@ -132,6 +132,8 @@ describe('Community IPC channels', { skip }, () => {
 			vault: { on() {}, touch() {}, status: () => ({ state: 'unavailable' }) },
 			// … and DNS-Schutz (dnsprotect:* channels)
 			dnsProtect: { on() {}, snapshot: () => ({ state: 'unknown' }) },
+			// … and Schnellaktionen (quickactions:* channels; a core before them ignores it)
+			quickActions: { list: async () => ({ ok: true, supported: false, actions: [] }), run: async () => ({ ok: false }), resetForNewServer() {} },
 			...extra,
 		});
 		return handlers;
@@ -157,7 +159,8 @@ describe('Community IPC channels', { skip }, () => {
 		for (const ch of invoked) assert.ok(handlers[ch] || own.includes(ch), ch);
 		for (const ch of ['notify:list', 'notify:read', 'notify:action', 'notify:prefs:get', 'notify:prefs:set', 'notify:test', 'notify:status', 'notify:dnd',
 			'chat:status', 'chat:conversations', 'chat:messages', 'chat:send', 'chat:open', 'chat:media', 'chat:media:save', 'chat:media:open',
-			'dnsprotect:status', 'dnsprotect:refresh', 'dnsprotect:pause', 'dnsprotect:resume', 'dnsprotect:watch']) {
+			'dnsprotect:status', 'dnsprotect:refresh', 'dnsprotect:pause', 'dnsprotect:resume', 'dnsprotect:watch',
+			'quickactions:list', 'quickactions:run']) {
 			assert.ok(invoked.includes(ch), `preload: ${ch}`);
 			assert.equal(typeof handlers[ch], 'function', ch);
 		}
